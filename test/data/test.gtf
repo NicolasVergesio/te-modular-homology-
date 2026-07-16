@@ -1,0 +1,3 @@
+1	test	gene	501	800	.	+	.	gene_id "TESTG01"; gene_version "1"; gene_biotype "protein_coding";
+1	test	transcript	501	800	.	+	.	gene_id "TESTG01"; transcript_id "TESTT01"; transcript_version "1"; gene_biotype "protein_coding"; transcript_biotype "protein_coding";
+1	test	CDS	501	797	.	+	0	gene_id "TESTG01"; transcript_id "TESTT01"; transcript_version "1"; gene_biotype "protein_coding"; transcript_biotype "protein_coding"; exon_number "1";

@@ -1,0 +1,19 @@
+# Generado por las corridas — no versionar
+resultados_*/
+dfam_cache/
+metrics.tsv
+
+# Junk de R / Python / editores
+.Rhistory
+.RData
+.Rproj.user/
+__pycache__/
+*.pyc
+.DS_Store
+
+# NOTA: los datos grandes (genoma, GTF, hits Dfam) son INPUTS por especie y van
+# FUERA del repo. No commitear genomas .fa/.gz de tamaño real.
+
+# índices autogenerados
+*.fa.fai
+*.fai

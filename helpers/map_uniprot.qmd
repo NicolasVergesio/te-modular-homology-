@@ -1,0 +1,93 @@
+---
+title: "Helper · Mapeo transcripto → UniProt (biomaRt)"
+format: html
+params:
+  dataset: "mmusculus_gene_ensembl"   # dataset de biomaRt de la especie (ver lista abajo)
+  version: null                        # release de Ensembl (ej. 111) para fijar versión; null = actual
+  hits_tsv: ""                         # ruta a hits_filtrados_en_cds.tsv (mapea solo los tx con hits); "" = todos los del dataset (lento)
+  out: "map_tx_to_uniprot.tsv"         # archivo de salida (apuntar ENST2UNIPROT del config acá)
+---
+
+Genera el `map_tx_to_uniprot.tsv` que consume el pipeline (variable `ENST2UNIPROT` del
+config). Es **opcional**: sin él, el pipeline deja la columna `uniprot` en `NA`.
+
+**Cómo usarlo:** cambiá los `params` de arriba (o al renderizar:
+`quarto render map_uniprot.qmd -P dataset=mmusculus_gene_ensembl -P version=111 -P hits_tsv=.../hits_filtrados_en_cds.tsv -P out=.../map_tx_to_uniprot.tsv`).
+
+**Datasets biomaRt comunes:** humano `hsapiens_gene_ensembl` · chimp `ptroglodytes_gene_ensembl` ·
+ratón `mmusculus_gene_ensembl` · gorila `ggorilla_gene_ensembl`. (Lista completa con
+`listDatasets(useEnsembl("genes"))`.)
+
+```{r setup}
+library(biomaRt); library(tidyverse)
+p <- params
+```
+
+## 1. Conectar a Ensembl (fijando versión si se pidió)
+
+Fijar la `version` es recomendable: así el mapeo corresponde a la **misma release** del GTF que
+usaste en el pipeline (evita desalineación entre isoformas).
+
+```{r mart}
+mart <- if (is.null(p$version) || p$version == "")
+  useEnsembl(biomart = "genes", dataset = p$dataset)
+else
+  useEnsembl(biomart = "genes", dataset = p$dataset, version = as.integer(p$version))
+mart
+```
+
+## 2. ¿Qué transcriptos mapear?
+
+Si pasás `hits_tsv`, mapea **solo** los transcriptos que tienen hits (rápido). Si no, baja el
+mapeo de **todos** los transcriptos del dataset (lento, pero sirve como referencia general).
+
+```{r transcripts}
+if (nzchar(p$hits_tsv)) {
+  txs <- read_tsv(p$hits_tsv, show_col_types = FALSE) %>% pull(transcript_id) %>% unique()
+  cat("transcriptos con hits a mapear:", length(txs), "\n")
+} else {
+  txs <- NULL   # NULL = sin filtro (todos)
+  cat("sin hits_tsv: se bajan TODOS los transcriptos del dataset (lento)\n")
+}
+```
+
+## 3. Consultar biomaRt
+
+Se piden Swiss-Prot (curado) y TrEMBL (no curado). Un transcripto puede tener varios; el
+`uniprot_cons` prioriza Swiss-Prot.
+
+```{r query}
+attrs <- c("ensembl_transcript_id", "uniprotswissprot", "uniprotsptrembl")
+mapeo <- if (is.null(txs))
+  getBM(attributes = attrs, mart = mart)
+else
+  getBM(attributes = attrs, filters = "ensembl_transcript_id", values = txs, mart = mart)
+
+mapeo <- mapeo %>%
+  mutate(uniprot_cons = case_when(
+    !is.na(uniprotswissprot) & uniprotswissprot != "" ~ uniprotswissprot,
+    !is.na(uniprotsptrembl)  & uniprotsptrembl  != "" ~ uniprotsptrembl,
+    TRUE ~ NA_character_))
+
+# quedarse solo con las filas que tienen algún UniProt (formato que espera el pipeline)
+mapeo_final <- mapeo %>% filter(uniprotswissprot != "" | uniprotsptrembl != "")
+```
+
+## 4. Resumen y guardar
+
+```{r save}
+cat("filas con UniProt:", nrow(mapeo_final),
+    " | transcriptos distintos:", n_distinct(mapeo_final$ensembl_transcript_id), "\n")
+if (nzchar(p$hits_tsv))
+  cat("cobertura sobre los tx con hits:",
+      round(100 * n_distinct(mapeo_final$ensembl_transcript_id) / length(txs), 1), "%\n")
+
+write_tsv(mapeo_final, p$out)
+cat("guardado ->", p$out, "\n")
+head(mapeo_final)
+```
+
+Luego, en el config de la especie:
+```bash
+export ENST2UNIPROT="<ruta al out de arriba>"
+```

@@ -1,0 +1,2 @@
+#seq_name	family_acc	family_name	bits	e-value	bias	hmm-st	hmm-en	strand	ali-st	ali-en	env-st	env-en	sq-len	kimura_div
+1	DF_TEST01	TestAlu	200.0	1e-50	5.0	1	150	+	600	750	595	755	2000	10.0

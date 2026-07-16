@@ -1,0 +1,399 @@
+<title>Reducción de redundancia TE — todos los casos</title>
+<style>
+  :root{
+    --bg:#fbfcfd; --panel:#ffffff; --panel2:#f4f7fa; --border:#e2e8f0; --border2:#cfd8e3;
+    --ink:#18212b; --muted:#5c6b7a; --faint:#8a97a6;
+    --alu:#0d9488; --sva:#7c3aed; --l1:#d97706; --otro:#64748b; --hal:#c026d3;
+    --colapsa:#16a34a; --conserva:#2563eb;
+    --axis:#b8c4d1; --seg-ink:#ffffff;
+    --mono:'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0e1319; --panel:#161e28; --panel2:#1b2531; --border:#26313f; --border2:#33404f;
+      --ink:#e6edf4; --muted:#93a1b1; --faint:#697787;
+      --alu:#2dd4bf; --sva:#a78bfa; --l1:#fbbf24; --otro:#94a3b8; --hal:#e879f9;
+      --colapsa:#4ade80; --conserva:#60a5fa; --axis:#3a4756;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1319; --panel:#161e28; --panel2:#1b2531; --border:#26313f; --border2:#33404f;
+    --ink:#e6edf4; --muted:#93a1b1; --faint:#697787;
+    --alu:#2dd4bf; --sva:#a78bfa; --l1:#fbbf24; --otro:#94a3b8; --hal:#e879f9;
+    --colapsa:#4ade80; --conserva:#60a5fa; --axis:#3a4756; --seg-ink:#0c1116;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfcfd; --panel:#ffffff; --panel2:#f4f7fa; --border:#e2e8f0; --border2:#cfd8e3;
+    --ink:#18212b; --muted:#5c6b7a; --faint:#8a97a6;
+    --alu:#0d9488; --sva:#7c3aed; --l1:#d97706; --otro:#64748b; --hal:#c026d3;
+    --colapsa:#16a34a; --conserva:#2563eb; --axis:#b8c4d1; --seg-ink:#ffffff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.55;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;padding:40px 24px 80px}
+  header h1{font-size:26px;line-height:1.2;margin:0 0 6px;text-wrap:balance;letter-spacing:-.01em}
+  header p{margin:0;color:var(--muted);max-width:64ch}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin:0 0 14px}
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);margin:40px 0 14px;font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:18px 20px;margin:14px 0}
+  .legend{display:flex;flex-wrap:wrap;gap:16px 22px;align-items:center}
+  .key{display:flex;align-items:center;gap:7px;font-size:13px;font-family:var(--mono)}
+  .sw{width:26px;height:11px;border-radius:3px;flex:none}
+  .fam-alu{background:var(--alu)} .fam-sva{background:var(--sva)} .fam-l1{background:var(--l1)}
+  .fam-otro{background:var(--otro)} .fam-hal{background:var(--hal)}
+
+  .case-title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .case-title .n{font-family:var(--mono);color:var(--faint);font-size:13px}
+  .case-title h3{font-size:16px;margin:0;letter-spacing:-.01em}
+  .case-title .loc{font-family:var(--mono);font-size:12px;color:var(--muted);
+    background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:1px 7px}
+  .case > .desc{color:var(--muted);font-size:13.5px;margin:2px 0 14px}
+
+  .lvl{display:grid;grid-template-columns:82px 1fr;gap:12px;align-items:center;margin:10px 0}
+  .lvl .tag{font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--faint);
+    text-align:right;text-transform:uppercase}
+  .track{position:relative;background:var(--panel2);border:1px solid var(--border);
+    border-radius:8px;padding:8px 10px 6px}
+  .lane{position:relative;height:22px;margin:3px 0}
+  .seg{position:absolute;top:2px;height:18px;border-radius:4px;display:flex;align-items:center;
+    padding:0 7px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--seg-ink);
+    white-space:nowrap;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .seg small{opacity:.82;font-weight:500;margin-left:5px}
+  .axis{position:relative;height:15px;margin-top:2px;border-top:1px dashed var(--axis)}
+  .axis span{position:absolute;top:2px;font-family:var(--mono);font-size:10px;color:var(--faint);
+    transform:translateX(-50%)}
+  .result{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;
+    color:var(--muted);flex-wrap:wrap}
+  .chip{border-radius:20px;padding:2px 10px;font-weight:600;font-size:11.5px;border:1px solid}
+  .chip.col{color:var(--colapsa);border-color:var(--colapsa);
+    background:color-mix(in srgb,var(--colapsa) 12%,transparent)}
+  .chip.con{color:var(--conserva);border-color:var(--conserva);
+    background:color-mix(in srgb,var(--conserva) 12%,transparent)}
+  .flag{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .take{border-left:3px solid var(--border2);padding:4px 0 4px 12px;margin-top:12px;
+    font-size:13.5px;color:var(--ink)}
+  .take b{color:var(--ink)}
+  .intron{position:absolute;top:9px;height:2px;background:var(--border2)}
+  .mtx-wrap{overflow-x:auto}
+  table.matrix{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;
+    min-width:520px}
+  table.matrix th,table.matrix td{border:1px solid var(--border);padding:6px 9px;text-align:left;
+    vertical-align:top}
+  table.matrix th{background:var(--panel2);color:var(--muted);font-weight:600;white-space:nowrap}
+  table.matrix caption{font-family:var(--sans);font-size:13px;font-weight:600;text-align:left;
+    padding:0 0 7px;color:var(--ink)}
+  table.matrix td.c{color:var(--colapsa);font-weight:600}
+  table.matrix td.k{color:var(--conserva);font-weight:600}
+  table.matrix .topo{color:var(--ink)}
+  .rulebox{background:var(--panel2);border:1px solid var(--border2)}
+  .rulebox ol{margin:6px 0 0;padding-left:20px} .rulebox li{margin:6px 0}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel2);border:1px solid var(--border);
+    border-radius:4px;padding:1px 5px}
+  .mini{display:inline-flex;gap:2px;vertical-align:middle;margin:0 2px}
+  .mini i{display:block;height:10px;border-radius:2px}
+  a.top{color:var(--conserva);text-decoration:none;font-family:var(--mono);font-size:12px}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Pipeline TE → homología modular · paso 04 (genómico) + paso 05 (proteico)</p>
+  <h1>Reducción de redundancia: todos los casos de solapamiento</h1>
+  <p>Cómo trata el algoritmo cada patrón de solape entre transposones, en los <b>dos mundos</b>:
+     el <b>genómico</b> (cuántas inserciones hay) y el <b>proteico</b> (qué secuencias van a CD-Hit).
+     La clave transversal es la <b>contención</b>: cuando un elemento cae dentro de otro.</p>
+</header>
+
+<div class="card legend">
+  <div class="key"><span class="sw fam-alu"></span>Alu (SINE)</div>
+  <div class="key"><span class="sw fam-sva"></span>SVA (Retroposon)</div>
+  <div class="key"><span class="sw fam-l1"></span>L1 (LINE)</div>
+  <div class="key"><span class="sw fam-hal"></span>HAL1 / otro L1</div>
+  <div class="key"><span class="sw fam-otro"></span>otra familia</div>
+  <div class="key"><span class="chip col">colapsa → 1</span></div>
+  <div class="key"><span class="chip con">se conserva</span></div>
+</div>
+
+<div class="card rulebox">
+  <p style="margin:0 0 2px"><b>Cómo leer cada caso.</b> Dos pistas alineadas, como un genome-browser:</p>
+  <ol>
+    <li><b>GENÓMICO</b> — cada barra es un elemento TE en el genoma. Debajo, qué hace el <b>paso 04</b>
+        (cuántos <i>loci</i> / inserciones).</li>
+    <li><b>PROTEÍNA (aa)</b> — cada barra es el tramo que ese TE aporta a la proteína. Debajo, qué hace
+        el <b>STEP 2</b> (cuántas secuencias distintas van a CD-Hit).</li>
+  </ol>
+  <p style="margin:8px 0 0"><b>Contención</b> = una barra cuya extensión cae <i>entera dentro</i> de
+     otra <span class="mini"><i class="fam-sva" style="width:44px"></i></span>
+     <span class="mini"><i class="fam-alu" style="width:18px"></i></span>. Regla del STEP 2:
+     <b>dentro de un locus, si una secuencia está contenida en otra, se colapsan</b> (queda la larga,
+     el header lista las dos). Distintas familias que son módulos separados ya quedaron en
+     <i>loci distintos</i> por el paso 04, así que nunca se comparan.</p>
+</div>
+
+<h2>De dónde salen · Paso 01: un TE dentro de una proteína</h2>
+
+<div class="card case">
+  <p class="desc" style="margin-top:0">Antes de reducir nada, el pipeline tiene que <b>encontrar</b> los transposones
+     que aportaron secuencia codificante. Cruza dos anotaciones: los <b>hits de TE</b> (Dfam — dónde hay
+     transposones en el genoma) y el <b>GTF</b> (dónde están los genes y sus exones codificantes, el CDS).</p>
+  <div class="lvl"><div class="tag">Genoma</div>
+    <div class="track">
+      <div class="lane">
+        <span class="seg fam-otro" style="left:4%;width:15%">CDS</span>
+        <span class="seg fam-otro" style="left:27%;width:19%">CDS</span>
+        <span class="seg fam-otro" style="left:60%;width:22%">CDS</span>
+        <span class="intron" style="left:19%;width:8%"></span>
+        <span class="intron" style="left:46%;width:14%"></span>
+      </div>
+      <div class="lane"><span class="seg fam-alu" style="left:32%;width:22%">AluY · hit Dfam</span></div>
+    </div></div>
+  <div class="take" style="margin-top:8px">El <b>solape</b> CDS∩TE (donde el Alu pisa un exón codificante) es el pedazo del
+     transposón que se volvió proteína. Se proyecta a coordenadas de <b>aminoácido</b> → <code>aa 100-118</code>.</div>
+  <p class="desc" style="margin-bottom:0">Además se reconcilia el ensamblado (liftOver), se filtra por confianza
+     (<code>e-value ≤ 1e-10</code>) y tamaño del solape (<code>≥ 30 nt</code>), y se marca si el CDS es "sano"
+     (múltiplo de 3 · ATG inicial · stop en marco). El resultado es la <b>tabla de hits</b> — cada fila, un TE en
+     una proteína — que alimenta la reducción de redundancia de abajo.</p>
+</div>
+
+<h2>A · Sin solape</h2>
+
+<div class="card case">
+  <div class="case-title"><span class="n">1</span><h3>Un TE solo (unihit)</h3><span class="loc">3.040 loci</span></div>
+  <p class="desc">El caso mayoritario: un transposón, sin nadie que se le solape.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track"><div class="lane"><span class="seg fam-alu" style="left:34%;width:32%">AluY</span></div></div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip col">1 locus</span> <span class="flag">(sin flag)</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track"><div class="lane"><span class="seg fam-alu" style="left:34%;width:32%">aa 100-118</span></div></div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip col">1 secuencia</span></div></div>
+  <div class="take">Nada que reducir. Genómico y proteico coinciden: 1 inserción, 1 región.</div>
+</div>
+
+<h2>B · Contención — se colapsan</h2>
+
+<div class="card case">
+  <div class="case-title"><span class="n">2</span><h3>Un TE dentro de otro — Alu dentro del SVA</h3><span class="loc">L00044 · 55 loci así</span></div>
+  <p class="desc">El SVA es compuesto: su extremo 5' es tipo-Alu. Dfam anota el SVA entero <b>y</b> ese Alu,
+     con el Alu <b>contenido</b> en el SVA (cadenas opuestas). Aportan el mismo tramo de proteína.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-sva" style="left:10%;width:80%">SVA_B <small>27457–29640</small></span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:14%;width:30%">AluSp</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip col">1 locus (SVA)</span> <span class="flag">es_subparte_sva · el Alu se absorbe</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-sva" style="left:20%;width:62%">SVA_B <small>aa 573-587</small></span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:20%;width:62%">AluSp <small>573-587</small></span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip col">1 secuencia</span> <span class="flag">header tes=SVA_B;AluSp</span></div></div>
+  <div class="take"><b>Contención total:</b> la secuencia del Alu es subcadena de la del SVA → se colapsan a una,
+     representante = SVA. Los dos hits quedan listados en el header.</div>
+</div>
+
+<div class="card case">
+  <div class="case-title"><span class="n">3</span><h3>Pila de la misma familia — 4 Alus solapados</h3><span class="loc">L01497</span></div>
+  <p class="desc">Cuatro subfamilias Alu (misma <code>repFamily=Alu</code>) que Dfam anotó sobre la misma región,
+     con bordes apenas distintos. Todas caen dentro de la más larga.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-alu" style="left:8%;width:70%">AluJr</span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:30%;width:58%">FLAM_A</span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:44%;width:40%">AluJr4</span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:50%;width:34%">AluSx4</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip col">1 locus</span> <span class="flag">ambiguedad_subfamilia · recíproco ≥50%</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-alu" style="left:14%;width:60%">AluJr <small>48-66</small></span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:14%;width:80%">FLAM_A <small>48-70</small></span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:40%;width:54%">AluJr4 <small>56-70</small></span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:47%;width:47%">AluSx4 <small>58-70</small></span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip col">1 secuencia</span> <span class="flag">todas ⊂ la de 48-70</span></div></div>
+  <div class="take"><b>Contención múltiple:</b> las 4 son subcadenas de la más larga (48-70) → 1 sola.
+     Sin esto, CD-Hit vería "4 miembros" que son un solo evento (Miedo A a nivel fragmento).</div>
+</div>
+
+<h2>C · Solape sin contención — se conservan</h2>
+
+<div class="card case">
+  <div class="case-title"><span class="n">4</span><h3>Misma familia, solape parcial (ninguno contiene al otro)</h3><span class="loc">L00103 · 34 loci</span></div>
+  <p class="desc">Dos elementos de la misma familia (L1) que se pisan, pero cada uno sobresale por un lado.
+     Ninguna secuencia es subcadena de la otra.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:6%;width:64%">L1M4a1_5end</span></div>
+      <div class="lane"><span class="seg fam-hal" style="left:48%;width:46%">HAL1ME</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip col">1 locus</span> <span class="flag">ambiguedad_subfamilia</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:4%;width:78%">L1M4a1 <small>aa 1-327</small></span></div>
+      <div class="lane"><span class="seg fam-hal" style="left:52%;width:44%">HAL1ME <small>217-337</small></span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip con">2 secuencias</span> <span class="flag">CD-Hit las agrupa por solape</span></div></div>
+  <div class="take"><b>Solape sin contención → se conservan las 2.</b> Se pisan en 217-327 pero cada una tiene
+     un tramo propio; no hay subcadena. CD-Hit las junta después si son homólogas.</div>
+</div>
+
+<div class="card case">
+  <div class="case-title"><span class="n">5</span><h3>Misma subfamilia fragmentada (un TE en 2 pedazos)</h3><span class="loc">flag: fragmentado</span></div>
+  <p class="desc">Un mismo TE cuya contribución al CDS queda partida en dos tramos de aa no contiguos
+     (un intrón o inserción en el medio). Esquemático.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:8%;width:30%">MSR1</span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:62%;width:30%">MSR1</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip col">1 locus</span> <span class="flag">fragmentado · span-unión ≤ p90</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:8%;width:24%">aa 40-55</span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:64%;width:26%">aa 90-107</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip con">2 secuencias</span> <span class="flag">no se unen (el medio NO es TE)</span></div></div>
+  <div class="take"><b>Fragmentos separados, no se concatenan.</b> Si uniéramos [40-107] meteríamos los aa 56-89
+     que no son del TE. Se dejan como 2 (decisión: simple y sin contaminar).</div>
+</div>
+
+<h2>D · Familias distintas separadas — el paso 04 ya las partió</h2>
+
+<div class="card case">
+  <div class="case-title"><span class="n">6</span><h3>Familias distintas adyacentes (dos módulos)</h3><span class="loc">137 posiciones</span></div>
+  <p class="desc">Un Alu al lado de un L1: familias distintas, no contenidas. Son dos módulos genuinos — la señal
+     que estudia la tesis.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-alu" style="left:8%;width:38%">AluSx</span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:52%;width:40%">L1PA</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip con">2 loci separados</span> <span class="flag">modulo_distinto_adyacente</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-alu" style="left:8%;width:38%">Alu <small>aa 20-45</small></span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:52%;width:40%">L1 <small>48-72</small></span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip con">2 secuencias</span> <span class="flag">loci distintos → nunca se comparan</span></div></div>
+  <div class="take"><b>Ya están en loci distintos.</b> Por eso el STEP 2 (que dedupea <i>dentro</i> de un locus)
+     nunca las toca. La separación la hizo el paso 04.</div>
+</div>
+
+<div class="card case">
+  <div class="case-title"><span class="n">6b</span><h3>Otra familia anidada dentro (no-SVA) → dos eventos</h3><span class="loc">L00760 · anidado_en</span></div>
+  <p class="desc">Un L2 insertado <b>dentro</b> de un L1 (familias distintas). Contención genómica, pero — a
+     diferencia del SVA (caso 2) — acá el anidado es una <b>inserción genuina</b> de un TE dentro de otro.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:8%;width:80%">L1 · contenedor</span></div>
+      <div class="lane"><span class="seg fam-otro" style="left:30%;width:26%">L2a_3end</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip con">2 loci</span> <span class="flag">anidado_en:L1 · NO colapsa</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:8%;width:80%">L1 <small>aa 5-95</small></span></div>
+      <div class="lane"><span class="seg fam-otro" style="left:30%;width:26%">L2 <small>28-52</small></span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip con">2 secuencias</span> <span class="flag">loci distintos → no se comparan</span></div></div>
+  <div class="take"><b>Contención genómica, pero se CONSERVA.</b> Solo el <b>SVA/Alu</b> colapsa (el Alu <i>es</i> parte
+     del SVA). Cualquier otro anidamiento entre familias = dos inserciones = dos loci. La decisión la toma el
+     paso 04 (a qué locus va cada uno); el STEP 2 solo dedupea dentro de un mismo locus.</div>
+</div>
+
+<div class="card case">
+  <div class="case-title"><span class="n">7</span><h3>L1 partido por un Alu (L1-Alu-L1)</h3><span class="loc">L00417 + L00418</span></div>
+  <p class="desc">Un Alu insertado en medio de un L1. Genómicamente: L1 — Alu — L1. El paso 04 separa el L1
+     (sus dos piezas = un locus) del Alu (otro locus).</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:4%;width:28%">L1M4c</span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:34%;width:30%">AluJb</span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:66%;width:30%">L1M4c</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip con">2 loci</span> <span class="flag">split_por:Alu (L1) · anidado_en:L1 (Alu)</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:4%;width:20%">L1 <small>80-90</small></span></div>
+      <div class="lane"><span class="seg fam-alu" style="left:26%;width:44%">Alu <small>80-118</small></span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:72%;width:22%">L1 <small>118-129</small></span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip con">3 secuencias</span> <span class="flag">2 fragmentos L1 (locus A) + Alu (locus B)</span></div></div>
+  <div class="take"><b>El caso que "rompería" una contención ingenua</b>: la pieza L1 [80-90] es subcadena del Alu [80-118].
+     Pero están en <b>loci distintos</b> → el STEP 2 no las compara. La regla es segura porque el paso 04
+     ya separó los módulos.</div>
+</div>
+
+<div class="card case">
+  <div class="case-title"><span class="n">8</span><h3>L1 en tándem (misma familia, solape bajo)</h3><span class="loc">Parche #1</span></div>
+  <p class="desc">Dos L1 de la misma familia pegados pero con solape recíproco &lt;50% — son dos inserciones
+     distintas, no una. Esquemático.</p>
+  <div class="lvl"><div class="tag">Genómico</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:8%;width:44%">L1PA2</span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:50%;width:44%">L1PA3</span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ paso 04: <span class="chip con">2 loci</span> <span class="flag">recíproco &lt;50% → NO colapsa (tándem)</span></div></div>
+  <div class="lvl"><div class="tag">Proteína</div>
+    <div class="track">
+      <div class="lane"><span class="seg fam-l1" style="left:8%;width:44%">L1PA2 <small>aa 10-40</small></span></div>
+      <div class="lane"><span class="seg fam-l1" style="left:50%;width:44%">L1PA3 <small>36-66</small></span></div>
+    </div></div>
+  <div class="lvl"><div class="tag"></div><div class="result">→ STEP 2: <span class="chip con">2 secuencias</span></div></div>
+  <div class="take"><b>El umbral recíproco ≥50% (Parche #1)</b> evita fusionar L1 en tándem. Se quedan como dos
+     inserciones, en dos loci.</div>
+</div>
+
+<h2>Matriz completa · las dos "universos"</h2>
+<div class="card">
+  <p class="desc" style="margin-top:0">Toda topología de solape se resuelve con estas reglas. La diferencia
+     grande es la <b>familia</b>: misma familia tiende a <span style="color:var(--colapsa)">colapsar</span>,
+     familias distintas tienden a <span style="color:var(--conserva)">conservarse</span> (salvo el SVA/Alu).</p>
+  <div class="mtx-wrap">
+  <table class="matrix">
+    <caption>Familias DISTINTAS — regla: se conservan, salvo SVA/Alu</caption>
+    <thead><tr><th>Topología</th><th>Genómico (paso 04)</th><th>AA (STEP 2)</th></tr></thead>
+    <tbody>
+      <tr><td class="topo">Anidado (T2 ⊂ T1)</td><td class="c">SVA/Alu: 1 locus</td><td class="c">1 seq</td></tr>
+      <tr><td class="topo"></td><td class="k">genérico: 2 loci (anidado_en)</td><td class="k">2 seq</td></tr>
+      <tr><td class="topo">Solape parcial</td><td class="k">2 loci (modulo_distinto)</td><td class="k">2 seq</td></tr>
+      <tr><td class="topo">Mismo span</td><td class="k">2 loci (o SVA→1)</td><td class="k">2 seq idénticas *</td></tr>
+      <tr><td class="topo">Gap / disjunto</td><td class="k">2 loci</td><td class="k">2 seq</td></tr>
+      <tr><td class="topo">T1–T2–T1 (split)</td><td class="k">2 loci (split + anidado)</td><td class="k">3 seq</td></tr>
+      <tr><td class="topo">3 consecutivos</td><td class="k">2–3 loci</td><td class="k">2–3 seq</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="mtx-wrap" style="margin-top:16px">
+  <table class="matrix">
+    <caption>MISMA familia — regla: colapsan si se solapan, salvo tándem</caption>
+    <thead><tr><th>Topología</th><th>Genómico (paso 04)</th><th>AA (STEP 2)</th></tr></thead>
+    <tbody>
+      <tr><td class="topo">Anidado (B ⊂ A)</td><td class="c">1 locus (ambiguedad)</td><td class="c">1 seq (contención)</td></tr>
+      <tr><td class="topo">Solape parcial ≥50%</td><td class="c">1 locus</td><td class="k">2 seq (sin contención)</td></tr>
+      <tr><td class="topo">Solape parcial &lt;50% (tándem)</td><td class="k">2 loci</td><td class="k">2 seq</td></tr>
+      <tr><td class="topo">Mismo span</td><td class="c">1 locus</td><td class="c">1 seq (idénticas)</td></tr>
+      <tr><td class="topo">Gap / disjunto</td><td class="k">2 loci</td><td class="k">2 seq</td></tr>
+      <tr><td class="topo">A–B–A (fragmentado)</td><td class="c">1 locus</td><td class="k">2–3 frags</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="desc" style="margin-bottom:0">* Caso teórico rarísimo (en chimp no aparece): dos familias distintas
+     en el mismo span que no sean SVA/Alu darían 2 secuencias idénticas — sólo lo limpiaría CD-Hit.</p>
+</div>
+
+<h2>La regla del STEP 2, en una línea</h2>
+<div class="card rulebox">
+  <p style="margin:0"><b>Dentro de cada locus, dedup por contención de secuencia</b> (una subcadena de otra → queda la larga,
+     el header lista todos los TEs). Sin mirar familia: el paso 04 ya puso los módulos distintos en
+     <i>loci separados</i>, así que dentro de un locus la contención siempre es "mismo evento".
+     Las que solo se solapan parcial se conservan y las junta CD-Hit.</p>
+  <p style="margin:10px 0 0;color:var(--muted);font-size:13px">Validado sobre chimp: de 55 loci con familias
+     mixtas, los 55 son de contención (0 casos de solape parcial cross-familia). La frontera del locus
+     encapsula la lógica de familia.</p>
+</div>
+
+</div>
