@@ -32,6 +32,7 @@ d <- fread(MAGNA, sep = "\t", na.strings = c("", "NA"))
 d[, `:=`(start_aa = as.integer(start_aa), end_aa = as.integer(end_aa))]
 if (!"sano" %in% names(d)) d[, sano := NA]
 if (!"uniprot_ids" %in% names(d)) d[, uniprot_ids := NA_character_]
+if (!"gene_id" %in% names(d)) d[, gene_id := NA_character_]
 if (!"rol" %in% names(d)) d[, rol := ""]
 
 # ============================================================================
@@ -39,7 +40,7 @@ if (!"rol" %in% names(d)) d[, rol := ""]
 # ============================================================================
 h <- d[!is.na(start_aa) & !is.na(end_aa),
        .(id_locus = id_locus[1], name_te = name_te[1], rol = rol[1],
-         uniprot = uniprot_ids[1], sano = any(sano %in% TRUE),
+         gene_id = gene_id[1], uniprot = uniprot_ids[1], sano = any(sano %in% TRUE),
          aa_start = min(start_aa), aa_end = max(end_aa)),
        by = .(id_pos, transcript_id)]
 get_seq <- function(tx, s, e) { p <- pv[[tx]]; if (is.null(p) || is.na(p)) return(NA_character_)
@@ -50,8 +51,9 @@ h[, flag_stop := grepl("\\*", seq)]
 
 setorder(h, id_locus, id_pos, transcript_id)
 h[, hit_id := paste(id_pos, transcript_id, sep = "__")]
-hdr1 <- sprintf(">%s | id_pos=%s | te=%s | locus=%s | tx=%s | uniprot=%s | aa=%d-%d%s",
-                h$hit_id, h$id_pos, h$name_te, h$id_locus, h$transcript_id,
+hdr1 <- sprintf(">%s | id_pos=%s | te=%s | locus=%s | gene=%s | tx=%s | uniprot=%s | aa=%d-%d%s",
+                h$hit_id, h$id_pos, h$name_te, h$id_locus,
+                ifelse(is.na(h$gene_id), "NA", h$gene_id), h$transcript_id,
                 ifelse(is.na(h$uniprot), "NA", h$uniprot), h$aa_start, h$aa_end,
                 ifelse(h$flag_stop, " STOP_INTERNO", ""))
 fa1 <- character(2L * nrow(h)); fa1[c(TRUE, FALSE)] <- hdr1; fa1[c(FALSE, TRUE)] <- h$seq
@@ -73,6 +75,7 @@ for (loc in unique(h$id_locus)) {
       if (grepl(s, kept[[k]]$seq, fixed = TRUE)) {         # s subcadena de un modulo -> absorber
         kept[[k]]$tes  <- c(kept[[k]]$tes,  g$name_te[i])
         kept[[k]]$tx   <- c(kept[[k]]$tx,   g$transcript_id[i])
+        kept[[k]]$gene <- c(kept[[k]]$gene, g$gene_id[i])
         kept[[k]]$uni  <- c(kept[[k]]$uni,  g$uniprot[i])
         kept[[k]]$sano <- kept[[k]]$sano || g$sano[i]
         absorbed <- TRUE; break
@@ -80,11 +83,12 @@ for (loc in unique(h$id_locus)) {
     }
     if (!absorbed) kept[[length(kept) + 1L]] <- list(
       seq = s, rep = g$name_te[i], tes = g$name_te[i], tx = g$transcript_id[i],
-      uni = g$uniprot[i], aa_start = g$aa_start[i], aa_end = g$aa_end[i],
+      gene = g$gene_id[i], uni = g$uniprot[i], aa_start = g$aa_start[i], aa_end = g$aa_end[i],
       tx_rep = g$transcript_id[i], sano = g$sano[i], stop = g$flag_stop[i])
   }
   for (m in kept) mods[[length(mods) + 1L]] <- data.table(
-    id_locus = loc, rep = m$rep, tes = paste(unique(m$tes), collapse = ";"),
+    id_locus = loc, gene = uni_na(m$gene), rep = m$rep,
+    tes = paste(unique(m$tes), collapse = ";"),
     n_te = length(unique(m$tes)), tx_rep = m$tx_rep,
     tx = paste(unique(m$tx), collapse = ";"), n_tx = length(unique(m$tx)),
     uniprot = uni_na(m$uni), aa_start = m$aa_start, aa_end = m$aa_end,
@@ -93,11 +97,11 @@ for (loc in unique(h$id_locus)) {
 dist <- rbindlist(mods)
 setorder(dist, id_locus, -len_aa)
 dist[, producto_id := sprintf("%s_%d", id_locus, seq_len(.N)), by = id_locus]
-setcolorder(dist, c("producto_id", "id_locus", "rep", "tes", "n_te", "tx_rep", "tx",
+setcolorder(dist, c("producto_id", "id_locus", "gene", "rep", "tes", "n_te", "tx_rep", "tx",
                     "n_tx", "uniprot", "aa_start", "aa_end", "len_aa", "sano", "flag_stop", "seq"))
 
-hdr2 <- sprintf(">%s | rep=%s | tes=%s | tx=%s | uniprot=%s | aa=%d-%d | len=%d%s",
-                dist$producto_id, dist$rep, dist$tes, dist$tx, dist$uniprot,
+hdr2 <- sprintf(">%s | gene=%s | rep=%s | tes=%s | tx=%s | uniprot=%s | aa=%d-%d | len=%d%s",
+                dist$producto_id, dist$gene, dist$rep, dist$tes, dist$tx, dist$uniprot,
                 dist$aa_start, dist$aa_end, dist$len_aa,
                 ifelse(dist$flag_stop, " STOP_INTERNO", ""))
 fa2 <- character(2L * nrow(dist)); fa2[c(TRUE, FALSE)] <- hdr2; fa2[c(FALSE, TRUE)] <- dist$seq
