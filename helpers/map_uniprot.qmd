@@ -29,11 +29,11 @@ Fijar la `version` es recomendable: así el mapeo corresponde a la **misma relea
 usaste en el pipeline (evita desalineación entre isoformas).
 
 ```{r mart}
-mart <- if (is.null(p$version) || p$version == "")
+mart <- if (is.null(p$version) || p$version == "") {
   useEnsembl(biomart = "genes", dataset = p$dataset)
-else
+} else {
   useEnsembl(biomart = "genes", dataset = p$dataset, version = as.integer(p$version))
-mart
+}
 ```
 
 ## 2. ¿Qué transcriptos mapear?
@@ -58,19 +58,21 @@ Se piden Swiss-Prot (curado) y TrEMBL (no curado). Un transcripto puede tener va
 
 ```{r query}
 attrs <- c("ensembl_transcript_id", "uniprotswissprot", "uniprotsptrembl")
-mapeo <- if (is.null(txs))
-  getBM(attributes = attrs, mart = mart)
-else
-  getBM(attributes = attrs, filters = "ensembl_transcript_id", values = txs, mart = mart)
 
-mapeo <- mapeo %>%
+mapeo <- if (is.null(txs)) {
+  getBM(attributes = attrs, mart = mart)
+} else {
+  getBM(attributes = attrs, filters = "ensembl_transcript_id", values = txs, mart = mart)
+}
+
+mapeo_final <- mapeo %>%
   mutate(uniprot_cons = case_when(
     !is.na(uniprotswissprot) & uniprotswissprot != "" ~ uniprotswissprot,
     !is.na(uniprotsptrembl)  & uniprotsptrembl  != "" ~ uniprotsptrembl,
-    TRUE ~ NA_character_))
-
-# quedarse solo con las filas que tienen algún UniProt (formato que espera el pipeline)
-mapeo_final <- mapeo %>% filter(uniprotswissprot != "" | uniprotsptrembl != "")
+    TRUE ~ NA_character_
+  )) %>%
+  # filtramos por la columna consenso: así los NA no descartan filas de forma silenciosa
+  filter(!is.na(uniprot_cons))
 ```
 
 ## 4. Resumen y guardar
