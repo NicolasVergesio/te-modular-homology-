@@ -35,6 +35,9 @@ if (!"uniprot_ids" %in% names(d)) d[, uniprot_ids := NA_character_]
 if (!"gene_id" %in% names(d)) d[, gene_id := NA_character_]
 if (!"rol" %in% names(d)) d[, rol := ""]
 
+# formatea logico/NA -> "TRUE"/"FALSE"/"NA" (para el campo sano de los headers)
+fmt_sano <- function(x) ifelse(is.na(x), "NA", ifelse(x, "TRUE", "FALSE"))
+
 # ============================================================================
 # STEP 1 — un hit por (posicion x isoforma): union de sus trozos de exon
 # ============================================================================
@@ -51,10 +54,10 @@ h[, flag_stop := grepl("\\*", seq)]
 
 setorder(h, id_locus, id_pos, transcript_id)
 h[, hit_id := paste(id_pos, transcript_id, sep = "__")]
-hdr1 <- sprintf(">%s | id_pos=%s | te=%s | locus=%s | gene=%s | tx=%s | uniprot=%s | aa=%d-%d%s",
+hdr1 <- sprintf(">%s | id_pos=%s | te=%s | locus=%s | gene=%s | tx=%s | uniprot=%s | sano=%s | aa=%d-%d%s",
                 h$hit_id, h$id_pos, h$name_te, h$id_locus,
                 ifelse(is.na(h$gene_id), "NA", h$gene_id), h$transcript_id,
-                ifelse(is.na(h$uniprot), "NA", h$uniprot), h$aa_start, h$aa_end,
+                ifelse(is.na(h$uniprot), "NA", h$uniprot), fmt_sano(h$sano), h$aa_start, h$aa_end,
                 ifelse(h$flag_stop, " STOP_INTERNO", ""))
 fa1 <- character(2L * nrow(h)); fa1[c(TRUE, FALSE)] <- hdr1; fa1[c(FALSE, TRUE)] <- h$seq
 writeLines(fa1, FA1)
@@ -77,35 +80,43 @@ for (loc in unique(h$id_locus)) {
         kept[[k]]$tx   <- c(kept[[k]]$tx,   g$transcript_id[i])
         kept[[k]]$gene <- c(kept[[k]]$gene, g$gene_id[i])
         kept[[k]]$uni  <- c(kept[[k]]$uni,  g$uniprot[i])
-        kept[[k]]$sano <- kept[[k]]$sano || g$sano[i]
+        kept[[k]]$sano <- kept[[k]]$sano || g$sano[i]            # OR -> columna sano (tabla)
+        kept[[k]]$sano_vec <- c(kept[[k]]$sano_vec, g$sano[i])   # por-tx -> header 04b encadenado
         absorbed <- TRUE; break
       }
     }
     if (!absorbed) kept[[length(kept) + 1L]] <- list(
       seq = s, rep = g$name_te[i], tes = g$name_te[i], tx = g$transcript_id[i],
       gene = g$gene_id[i], uni = g$uniprot[i], aa_start = g$aa_start[i], aa_end = g$aa_end[i],
-      tx_rep = g$transcript_id[i], sano = g$sano[i], stop = g$flag_stop[i])
+      tx_rep = g$transcript_id[i], sano = g$sano[i], sano_vec = g$sano[i], stop = g$flag_stop[i])
   }
-  for (m in kept) mods[[length(mods) + 1L]] <- data.table(
-    id_locus = loc, gene = uni_na(m$gene), rep = m$rep,
-    tes = paste(unique(m$tes), collapse = ";"),
-    n_te = length(unique(m$tes)), tx_rep = m$tx_rep,
-    tx = paste(unique(m$tx), collapse = ";"), n_tx = length(unique(m$tx)),
-    uniprot = uni_na(m$uni), aa_start = m$aa_start, aa_end = m$aa_end,
-    len_aa = nchar(m$seq), sano = m$sano, flag_stop = m$stop, seq = m$seq)
+  for (m in kept) {
+    utx <- unique(m$tx)                          # tx en orden de aparicion
+    sano_tx <- paste(fmt_sano(m$sano_vec[match(utx, m$tx)]), collapse = ";")  # sano alineado a utx
+    mods[[length(mods) + 1L]] <- data.table(
+      id_locus = loc, gene = uni_na(m$gene), rep = m$rep,
+      tes = paste(unique(m$tes), collapse = ";"),
+      n_te = length(unique(m$tes)), tx_rep = m$tx_rep,
+      tx = paste(utx, collapse = ";"), n_tx = length(utx),
+      uniprot = uni_na(m$uni), aa_start = m$aa_start, aa_end = m$aa_end,
+      len_aa = nchar(m$seq), sano = m$sano, flag_stop = m$stop, seq = m$seq,
+      sano_tx = sano_tx)
+  }
 }
 dist <- rbindlist(mods)
 setorder(dist, id_locus, -len_aa)
 dist[, producto_id := sprintf("%s_%d", id_locus, seq_len(.N)), by = id_locus]
 setcolorder(dist, c("producto_id", "id_locus", "gene", "rep", "tes", "n_te", "tx_rep", "tx",
-                    "n_tx", "uniprot", "aa_start", "aa_end", "len_aa", "sano", "flag_stop", "seq"))
+                    "n_tx", "uniprot", "aa_start", "aa_end", "len_aa", "sano", "flag_stop", "seq",
+                    "sano_tx"))
 
-hdr2 <- sprintf(">%s | gene=%s | rep=%s | tes=%s | tx=%s | uniprot=%s | aa=%d-%d | len=%d%s",
+hdr2 <- sprintf(">%s | gene=%s | rep=%s | tes=%s | tx=%s | uniprot=%s | sano=%s | aa=%d-%d | len=%d%s",
                 dist$producto_id, dist$gene, dist$rep, dist$tes, dist$tx, dist$uniprot,
-                dist$aa_start, dist$aa_end, dist$len_aa,
+                dist$sano_tx, dist$aa_start, dist$aa_end, dist$len_aa,
                 ifelse(dist$flag_stop, " STOP_INTERNO", ""))
 fa2 <- character(2L * nrow(dist)); fa2[c(TRUE, FALSE)] <- hdr2; fa2[c(FALSE, TRUE)] <- dist$seq
 writeLines(fa2, FA2)
+dist[, sano_tx := NULL]                    # transitoria: solo para el header 04b, no va a la tabla
 fwrite(dist, TAB2, sep = "\t")
 
 # --- metrics + resumen ---
