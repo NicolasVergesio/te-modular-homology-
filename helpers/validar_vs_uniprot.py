@@ -83,6 +83,10 @@ def main():
     ap.add_argument("--report", metavar="TXT",
                     help="guardar el reporte de porcentajes "
                          "(default: 05_validacion_uniprot.txt junto al 04a)")
+    ap.add_argument("--gene-xref", metavar="TSV",
+                    help="xref de Ensembl (gene_stable_id..xref, .gz ok) para el fallback "
+                         "por gen; sin esto el fallback usa solo los accessions que ya "
+                         "aparecen en el 04a")
     ap.add_argument("--no-write", action="store_true",
                     help="no escribir nada, solo imprimir el reporte")
     args = ap.parse_args()
@@ -98,6 +102,27 @@ def main():
     base_index = {}
     for a, s in up.items():
         base_index.setdefault(re.sub(r"-\d+$", "", a), []).append(s)
+
+    # --- indice gene -> accessions, para el fallback ---
+    # Ensembl solo publica el xref tx->UniProt cuando la traduccion coincide con la
+    # proteina, asi que muchos transcriptos quedan sin accession aunque su GEN si
+    # tenga proteinas conocidas (via otros transcriptos). Se juntan de dos fuentes.
+    gene_accs = {}
+    def add_gene_acc(gene, acc):
+        if gene and gene != "NA" and acc in up:
+            gene_accs.setdefault(gene, set()).add(acc)
+
+    if args.gene_xref:
+        op = gzip.open if args.gene_xref.endswith(".gz") else open
+        with op(args.gene_xref, "rt") as fh:
+            for line in fh:
+                f = line.rstrip("\n").split("\t")
+                if len(f) > 3 and f[0].startswith("ENS"):
+                    add_gene_acc(f[0], f[3])
+    for h in parse_04a(args.hits_04a):                 # los que ya trae el propio 04a
+        for a in re.split(r"[;,]", h["uniprot"]):
+            add_gene_acc(h["gene"], a)
+    sys.stderr.write(f"fallback por gen: {len(gene_accs)} genes con proteinas UniProt\n")
 
     def clasificar_una(uni, s, e, seq):
         base = re.sub(r"-\d+$", "", uni)
@@ -118,21 +143,32 @@ def main():
     # todas y gana la mejor (el mapeo tx->UniProt no siempre desambigua a una sola).
     RANK = {"exacto": 0, "substr": 1, "otra_iso": 2, "stop": 3, "mismatch": 4, "no_acc": 5}
 
-    def clasificar(uni, s, e, seq):
-        if uni == "NA":
-            return "na", None, "NA"
-        cands = [a for a in re.split(r"[;,]", uni) if a]
-        best = min(((clasificar_una(a, s, e, seq), a) for a in cands),
-                   key=lambda x: RANK[x[0][0]])
-        (out, base), acc = best
-        return out, base, acc
+    def clasificar(uni, s, e, seq, gene):
+        """-> (status, base_acc, acc_usada). Si no hay mapeo directo tx->UniProt,
+        cae al fallback por gen (proteinas que UniProt tiene para ESE gen, via
+        OTROS transcriptos): no valida coordenadas, solo presencia de la secuencia."""
+        if uni != "NA":
+            cands = [a for a in re.split(r"[;,]", uni) if a]
+            (out, base), acc = min(((clasificar_una(a, s, e, seq), a) for a in cands),
+                                   key=lambda x: RANK[x[0][0]])
+            if out != "no_acc":                     # hubo mapeo directo utilizable
+                return out, base, acc
+        # --- fallback por gen ---
+        accs = gene_accs.get(gene, ())
+        for a in accs:
+            if seq in up[a]:
+                return "otro_tx_del_gen", re.sub(r"-\d+$", "", a), a
+        if accs:
+            return "producto_distinto", None, ";".join(sorted(accs)[:3])
+        return ("no_acc", None, uni) if uni != "NA" else ("na", None, "NA")
 
     COLS = ["id", "id_pos", "locus", "gene", "tx", "te", "uniprot", "uniprot_usado",
             "fuente", "sano", "aa_start", "aa_end", "len_aa", "status", "seq_inferida"]
     tot = Counter(); by_sano = {"TRUE": Counter(), "FALSE": Counter(), "NA": Counter()}
     rows = []
     for h in parse_04a(args.hits_04a):
-        out, base, acc = clasificar(h["uniprot"], h["aa_start"], h["aa_end"], h["seq"])
+        out, base, acc = clasificar(h["uniprot"], h["aa_start"], h["aa_end"],
+                                    h["seq"], h["gene"])
         tot[out] += 1
         by_sano.get(h["sano"], by_sano["NA"])[out] += 1
         h.update(status=out, uniprot_usado=acc, fuente=src.get(base, "NA") if base else "NA",
@@ -142,18 +178,82 @@ def main():
     linea = []                                   # el reporte se acumula para poder guardarlo
     def w(s=""): linea.append(s); print(s)
 
+    DIRECTO  = ["exacto", "substr", "stop", "otra_iso", "mismatch"]
+    FALLBACK = ["otro_tx_del_gen", "producto_distinto", "no_acc", "na"]
+
     def reporte(c, titulo):
-        comp = sum(c[k] for k in ("exacto", "substr", "stop", "otra_iso", "mismatch"))
-        p = lambda n: f"{100*n/comp:5.1f}%" if comp else "  n/a"
+        comp = sum(c[k] for k in DIRECTO)
+        fb   = sum(c[k] for k in FALLBACK)
+        pc = lambda n: f"{100*n/comp:5.1f}%" if comp else "  n/a"
+        pf = lambda n: f"{100*n/fb:5.1f}%" if fb else "  n/a"
         w(f"\n### {titulo}   (hits={sum(c.values())})")
-        w(f"  sin uniprot en el header (NA)      : {c['na']}")
-        w(f"  accession ausente del FASTA        : {c['no_acc']}")
-        w(f"  COMPARABLES                        : {comp}")
-        w(f"    exacto en coordenadas            : {c['exacto']:6d} ({p(c['exacto'])})")
-        w(f"    substring (coord corrida)        : {c['substr']:6d} ({p(c['substr'])})")
-        w(f"    STOP interno (traduccion rota)   : {c['stop']:6d} ({p(c['stop'])})")
-        w(f"    rescatado en otra isoforma       : {c['otra_iso']:6d} ({p(c['otra_iso'])})")
-        w(f"    MISMATCH real                    : {c['mismatch']:6d} ({p(c['mismatch'])})")
+        w(f"  [A] CON mapeo directo tx->UniProt  : {comp}")
+        w(f"    exacto en coordenadas            : {c['exacto']:6d} ({pc(c['exacto'])})")
+        w(f"    substring (coord corrida)        : {c['substr']:6d} ({pc(c['substr'])})")
+        w(f"    STOP interno (traduccion rota)   : {c['stop']:6d} ({pc(c['stop'])})")
+        w(f"    rescatado en otra isoforma       : {c['otra_iso']:6d} ({pc(c['otra_iso'])})")
+        w(f"    MISMATCH real                    : {c['mismatch']:6d} ({pc(c['mismatch'])})")
+        w(f"  [B] SIN mapeo directo (via gen)    : {fb}")
+        w(f"    hallada en otra prot. del gen    : {c['otro_tx_del_gen']:6d} ({pf(c['otro_tx_del_gen'])})")
+        w(f"    producto distinto al del gen     : {c['producto_distinto']:6d} ({pf(c['producto_distinto'])})")
+        w(f"    accession ausente del FASTA      : {c['no_acc']:6d} ({pf(c['no_acc'])})")
+        w(f"    sin UniProt para el gen          : {c['na']:6d} ({pf(c['na'])})")
+
+    def glosario():
+        w("\n" + "=" * 66)
+        w("QUE SIGNIFICA CADA CATEGORIA")
+        w("=" * 66)
+        w("""
+Cada hit es una ventana AA (aa_start-aa_end) de un transcripto, traducida por el
+pipeline. 'Validar' = comparar esa secuencia inferida contra la proteina real de
+UniProt. Para eso hace falta saber que proteina corresponde al transcripto: ese
+puente lo da el xref de Ensembl, que SOLO existe cuando la traduccion ya coincidia
+con UniProt. De ahi los dos bloques:
+
+[A] CON mapeo directo — el header traia accession y esta en el FASTA. Es la
+    validacion estricta: se compara secuencia Y posicion.
+  exacto      la secuencia inferida es identica a proteina[aa_start-1:aa_end].
+              Secuencia y coordenadas correctas. Es el resultado buscado.
+  substring   la secuencia aparece en la proteina pero en OTRA posicion: la
+              traduccion es correcta y las coordenadas estan corridas.
+  stop        la traduccion tiene un '*' (STOP) interno -> el CDS anotado esta
+              roto o desfasado; no se compara contra nada.
+  otra_iso    no coincide con la isoforma referenciada, pero SI aparece en otra
+              isoforma de la MISMA entrada UniProt (P12345-1, -2, ...): la
+              referencia elegida era la isoforma equivocada.
+  MISMATCH    la secuencia inferida NO aparece en ninguna parte de esa proteina
+    real      ni de sus isoformas, y no tiene STOP interno. Es decir: tradujimos
+              una proteina que UniProt no reconoce para ese transcripto. Causas
+              tipicas: el CDS del GTF y la entrada UniProt describen productos
+              distintos (frecuente en entradas trEMBL, predichas por computadora
+              y no curadas), o la anotacion del CDS esta desplazada. Mirar la
+              columna 'fuente': sp=SwissProt (curada, un mismatch pesa) vs
+              tr=trEMBL (predicha, un mismatch dice mas de UniProt que nuestro).
+
+[B] SIN mapeo directo — el transcripto no tiene accession utilizable, asi que NO
+    se puede validar posicion. Se cae al gen: se prueban las proteinas que UniProt
+    tiene para ESE gen (aportadas por otros transcriptos). Es evidencia mas debil.
+  hallada en    la secuencia inferida aparece dentro de alguna proteina del gen:
+  otra prot.    el modulo TE existe en el producto real aunque este transcripto
+  del gen       puntual no este mapeado. Sostiene el hit.
+  producto      el gen tiene proteinas conocidas y la secuencia no aparece en
+  distinto      ninguna: isoforma con un producto genuinamente distinto (tipico
+                de las isoformas nuevas de Ensembl, sin equivalente en UniProt).
+  accession     el header traia accession pero no esta en el FASTA descargado
+  ausente       (FASTA incompleto o sin isoformas). Problema de datos, no del hit.
+  sin UniProt   ni el transcripto ni el gen tienen proteina en UniProt: no hay
+  para el gen   absolutamente nada contra que comparar.
+
+SESGO IMPORTANTE: el bloque [A] existe solo para transcriptos que Ensembl ya habia
+verificado identicos a UniProt. Los porcentajes de [A] miden si NUESTRAS coordenadas
+y traduccion son correctas; NO son una estimacion insesgada sobre todos los hits.
+
+Sobre sano=FALSE con 'exacto': 'sano' es un QC del CDS (largo multiplo de 3, ATG
+inicial, STOP final). Un CDS puede fallar ese QC -por ejemplo empezar sin ATG por
+estar 5' incompleto- y aun asi contener intacta la ventana del TE, que suele caer
+lejos de los extremos. Por eso hay sano=FALSE que dan exacto: el defecto esta en el
+borde del CDS, no en la region que nos interesa. Al reves, los sano=FALSE
+concentran los 'stop' y los 'mismatch', que es lo que hace util al flag.""")
 
     w("=" * 66)
     w("VALIDACION secuencias inferidas (04a) vs UniProt real")
@@ -172,6 +272,7 @@ def main():
         w(f"MISMATCH reales: {len(mismatches)}  |  fuente: "
           f"sp={srcs['sp']} tr={srcs['tr']}  |  sano: "
           f"TRUE={sanos['TRUE']} FALSE={sanos['FALSE']} NA={sanos['NA']}")
+    glosario()
 
     def dump(path, cols, data):
         with open(path, "w") as fh:
