@@ -143,36 +143,59 @@ def main():
     # todas y gana la mejor (el mapeo tx->UniProt no siempre desambigua a una sola).
     RANK = {"exacto": 0, "substr": 1, "otra_iso": 2, "stop": 3, "mismatch": 4, "no_acc": 5}
 
+    def fuente_de(a):
+        """'sp' (SwissProt, curada) / 'tr' (trEMBL, predicha) / None si no esta en el FASTA."""
+        base = re.sub(r"-\d+$", "", a)
+        return src.get(base) if (a in up or base in up) else None
+
+    def orden(x):
+        """Criterio para elegir entre las accessions de un mismo transcripto.
+        1o el status (la evidencia manda: si trEMBL da 'exacto' y SwissProt 'mismatch',
+        gana trEMBL). Recien ANTE EMPATE se prefiere la curada, y dentro de ella la
+        accession de isoforma, que es la proteina exacta del transcripto. Sin este
+        desempate el ganador seria el primero de la cadena, o sea el orden del archivo
+        de Ensembl: arbitrario, y dejaria la columna 'fuente' al azar en los
+        transcriptos que tienen curada y predicha a la vez (7297 en hg38)."""
+        (out, base), acc = x
+        return (RANK[out],
+                0 if src.get(base) == "sp" else 1,
+                0 if re.search(r"-\d+$", acc) else 1)
+
     def clasificar(uni, s, e, seq, gene):
-        """-> (status, base_acc, acc_usada). Si no hay mapeo directo tx->UniProt,
-        cae al fallback por gen (proteinas que UniProt tiene para ESE gen, via
+        """-> (status, base_acc, acc_usada, fuentes_disponibles). Si no hay mapeo directo
+        tx->UniProt, cae al fallback por gen (proteinas que UniProt tiene para ESE gen, via
         OTROS transcriptos): no valida coordenadas, solo presencia de la secuencia."""
+        fuentes = "NA"
         if uni != "NA":
             cands = [a for a in re.split(r"[;,]", uni) if a]
+            fs = sorted({f for f in (fuente_de(a) for a in cands) if f})
+            fuentes = ",".join(fs) if fs else "NA"
             (out, base), acc = min(((clasificar_una(a, s, e, seq), a) for a in cands),
-                                   key=lambda x: RANK[x[0][0]])
+                                   key=orden)
             if out != "no_acc":                     # hubo mapeo directo utilizable
-                return out, base, acc
+                return out, base, acc, fuentes
         # --- fallback por gen ---
         accs = gene_accs.get(gene, ())
         for a in accs:
             if seq in up[a]:
-                return "otro_tx_del_gen", re.sub(r"-\d+$", "", a), a
+                return "otro_tx_del_gen", re.sub(r"-\d+$", "", a), a, fuentes
         if accs:
-            return "producto_distinto", None, ";".join(sorted(accs)[:3])
-        return ("no_acc", None, uni) if uni != "NA" else ("na", None, "NA")
+            return "producto_distinto", None, ";".join(sorted(accs)[:3]), fuentes
+        return (("no_acc", None, uni, fuentes) if uni != "NA"
+                else ("na", None, "NA", fuentes))
 
     COLS = ["id", "id_pos", "locus", "gene", "tx", "te", "uniprot", "uniprot_usado",
-            "fuente", "sano", "aa_start", "aa_end", "len_aa", "status", "seq_inferida"]
+            "fuente", "fuentes_disponibles", "sano", "aa_start", "aa_end", "len_aa",
+            "status", "seq_inferida"]
     tot = Counter(); by_sano = {"TRUE": Counter(), "FALSE": Counter(), "NA": Counter()}
     rows = []
     for h in parse_04a(args.hits_04a):
-        out, base, acc = clasificar(h["uniprot"], h["aa_start"], h["aa_end"],
-                                    h["seq"], h["gene"])
+        out, base, acc, fuentes = clasificar(h["uniprot"], h["aa_start"], h["aa_end"],
+                                             h["seq"], h["gene"])
         tot[out] += 1
         by_sano.get(h["sano"], by_sano["NA"])[out] += 1
         h.update(status=out, uniprot_usado=acc, fuente=src.get(base, "NA") if base else "NA",
-                 len_aa=len(h["seq"]), seq_inferida=h["seq"])
+                 fuentes_disponibles=fuentes, len_aa=len(h["seq"]), seq_inferida=h["seq"])
         rows.append(h)
 
     linea = []                                   # el reporte se acumula para poder guardarlo
@@ -243,6 +266,15 @@ con UniProt. De ahi los dos bloques:
   ausente       (FASTA incompleto o sin isoformas). Problema de datos, no del hit.
   sin UniProt   ni el transcripto ni el gen tienen proteina en UniProt: no hay
   para el gen   absolutamente nada contra que comparar.
+
+DOS COLUMNAS PARA LEER 'fuente' SIN EQUIVOCARSE (en el TSV, no en este resumen):
+  uniprot_usado        la accession con la que efectivamente se valido.
+  fuente               si ESA es 'sp' (SwissProt, curada) o 'tr' (trEMBL, predicha).
+  fuentes_disponibles  que habia para elegir en ese transcripto: 'sp', 'tr' o 'sp,tr'.
+Se leen juntas. 'fuente=tr' con 'fuentes_disponibles=tr' significa que trEMBL era lo
+unico que habia. 'fuente=tr' con 'fuentes_disponibles=sp,tr' es MUY distinto: habia una
+entrada curada y NO fue la que coincidio -> mirar ese caso, la curada dio peor status.
+Cuando ambas empatan gana siempre la curada, asi que ese cruce no aparece por azar.
 
 SESGO IMPORTANTE: el bloque [A] existe solo para transcriptos que Ensembl ya habia
 verificado identicos a UniProt. Los porcentajes de [A] miden si NUESTRAS coordenadas
