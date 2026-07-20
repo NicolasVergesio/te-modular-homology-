@@ -19,6 +19,7 @@ MAGNA <- file.path(CLDIR, "01_hits_magna.tsv")
 FA1   <- file.path(CLDIR, "04a_hits_aa.fasta")
 FA2   <- file.path(CLDIR, "04b_dominios_aa.fasta")
 TAB2  <- file.path(CLDIR, "04b_dominios_aa.tsv")
+TAB3  <- file.path(CLDIR, "04b_productos_tx.tsv")   # tabla larga: 1 fila por hit
 stopifnot(file.exists(MAGNA), file.exists(CDS))
 
 # --- traducir CDS (corta el header en '|' -> transcript_id) ---
@@ -37,6 +38,25 @@ if (!"rol" %in% names(d)) d[, rol := ""]
 
 # formatea logico/NA -> "TRUE"/"FALSE"/"NA" (para el campo sano de los headers)
 fmt_sano <- function(x) ifelse(is.na(x), "NA", ifelse(x, "TRUE", "FALSE"))
+
+# --- convencion de separadores en los campos multi-valor -----------------------
+#   ';'  separa TRANSCRIPTOS (un slot por tx, en el mismo orden que la columna tx)
+#   ','  separa varios valores DENTRO de un mismo transcripto
+#   'NA' ocupa el slot cuando ese transcripto no tiene valor (nunca se omite)
+# Asi 'uniprot', 'gene' y 'sano_tx' quedan alineados posicionalmente con 'tx':
+# el slot i corresponde siempre al i-esimo transcripto. (La tabla larga
+# 04b_productos_tx.tsv trae lo mismo sin codificar, una fila por hit.)
+# El paso 01 junta las accessions de un tx con ';', asi que se normalizan a ','.
+norm_multi <- function(x) gsub(";", ",", x, fixed = TRUE)
+
+# valores de 'vals' agrupados por transcripto, alineados a utx
+por_tx <- function(vals, txs, utx) {
+  vapply(utx, function(u) {
+    v <- unlist(strsplit(vals[txs == u], "[;,]"))
+    v <- unique(v[!is.na(v) & nzchar(v) & v != "NA"])
+    if (!length(v)) "NA" else paste(v, collapse = ",")
+  }, character(1), USE.NAMES = FALSE)
+}
 
 # ============================================================================
 # STEP 1 — un hit por (posicion x isoforma): union de sus trozos de exon
@@ -57,7 +77,8 @@ h[, hit_id := paste(id_pos, transcript_id, sep = "__")]
 hdr1 <- sprintf(">%s | id_pos=%s | te=%s | locus=%s | gene=%s | tx=%s | uniprot=%s | sano=%s | aa=%d-%d%s",
                 h$hit_id, h$id_pos, h$name_te, h$id_locus,
                 ifelse(is.na(h$gene_id), "NA", h$gene_id), h$transcript_id,
-                ifelse(is.na(h$uniprot), "NA", h$uniprot), fmt_sano(h$sano), h$aa_start, h$aa_end,
+                ifelse(is.na(h$uniprot), "NA", norm_multi(h$uniprot)), fmt_sano(h$sano),
+                h$aa_start, h$aa_end,
                 ifelse(h$flag_stop, " STOP_INTERNO", ""))
 fa1 <- character(2L * nrow(h)); fa1[c(TRUE, FALSE)] <- hdr1; fa1[c(FALSE, TRUE)] <- h$seq
 writeLines(fa1, FA1)
@@ -65,8 +86,7 @@ writeLines(fa1, FA1)
 # ============================================================================
 # STEP 2 — por locus, dedup por CONTENCION de secuencia
 # ============================================================================
-uni_na <- function(x) { x <- unique(x[!is.na(x) & nzchar(x)]); if (!length(x)) "NA" else paste(x, collapse = ";") }
-mods <- list()
+mods <- list(); largo <- list(); mid <- 0L
 for (loc in unique(h$id_locus)) {
   g <- h[id_locus == loc]
   # mas larga primero; en empate, el representante del paso 04 primero
@@ -82,25 +102,39 @@ for (loc in unique(h$id_locus)) {
         kept[[k]]$uni  <- c(kept[[k]]$uni,  g$uniprot[i])
         kept[[k]]$sano <- kept[[k]]$sano || g$sano[i]            # OR -> columna sano (tabla)
         kept[[k]]$sano_vec <- c(kept[[k]]$sano_vec, g$sano[i])   # por-tx -> header 04b encadenado
+        kept[[k]]$id_pos_v <- c(kept[[k]]$id_pos_v, g$id_pos[i]) # por-hit -> tabla larga
+        kept[[k]]$s_v <- c(kept[[k]]$s_v, g$aa_start[i])
+        kept[[k]]$e_v <- c(kept[[k]]$e_v, g$aa_end[i])
         absorbed <- TRUE; break
       }
     }
     if (!absorbed) kept[[length(kept) + 1L]] <- list(
       seq = s, rep = g$name_te[i], tes = g$name_te[i], tx = g$transcript_id[i],
       gene = g$gene_id[i], uni = g$uniprot[i], aa_start = g$aa_start[i], aa_end = g$aa_end[i],
-      tx_rep = g$transcript_id[i], sano = g$sano[i], sano_vec = g$sano[i], stop = g$flag_stop[i])
+      tx_rep = g$transcript_id[i], sano = g$sano[i], sano_vec = g$sano[i], stop = g$flag_stop[i],
+      id_pos_v = g$id_pos[i], s_v = g$aa_start[i], e_v = g$aa_end[i])
   }
   for (m in kept) {
     utx <- unique(m$tx)                          # tx en orden de aparicion
     sano_tx <- paste(fmt_sano(m$sano_vec[match(utx, m$tx)]), collapse = ";")  # sano alineado a utx
+    mid <- mid + 1L
     mods[[length(mods) + 1L]] <- data.table(
-      id_locus = loc, gene = uni_na(m$gene), rep = m$rep,
+      mod_id = mid,
+      id_locus = loc, gene = paste(por_tx(m$gene, m$tx, utx), collapse = ";"), rep = m$rep,
       tes = paste(unique(m$tes), collapse = ";"),
       n_te = length(unique(m$tes)), tx_rep = m$tx_rep,
       tx = paste(utx, collapse = ";"), n_tx = length(utx),
-      uniprot = uni_na(m$uni), aa_start = m$aa_start, aa_end = m$aa_end,
+      uniprot = paste(por_tx(m$uni, m$tx, utx), collapse = ";"),
+      aa_start = m$aa_start, aa_end = m$aa_end,
       len_aa = nchar(m$seq), sano = m$sano, flag_stop = m$stop, seq = m$seq,
       sano_tx = sano_tx)
+    # tabla larga: una fila por HIT, sin colapsar nada (unico lugar donde TE y tx
+    # pueden variar a la vez sin ambiguedad)
+    largo[[length(largo) + 1L]] <- data.table(
+      mod_id = mid, id_locus = loc, id_pos = m$id_pos_v, te = m$tes, tx = m$tx,
+      gene = ifelse(is.na(m$gene), "NA", m$gene),
+      uniprot = ifelse(is.na(m$uni), "NA", norm_multi(m$uni)),
+      sano = fmt_sano(m$sano_vec), aa_start = m$s_v, aa_end = m$e_v)
   }
 }
 dist <- rbindlist(mods)
@@ -116,8 +150,16 @@ hdr2 <- sprintf(">%s | gene=%s | rep=%s | tes=%s | tx=%s | uniprot=%s | sano=%s 
                 ifelse(dist$flag_stop, " STOP_INTERNO", ""))
 fa2 <- character(2L * nrow(dist)); fa2[c(TRUE, FALSE)] <- hdr2; fa2[c(FALSE, TRUE)] <- dist$seq
 writeLines(fa2, FA2)
-dist[, sano_tx := NULL]                    # transitoria: solo para el header 04b, no va a la tabla
-fwrite(dist, TAB2, sep = "\t")
+setcolorder(dist, c(setdiff(names(dist), c("sano_tx", "seq", "mod_id")), "sano_tx", "seq"))
+fwrite(dist[, !"mod_id"], TAB2, sep = "\t")
+
+# --- tabla larga: una fila por hit (sin campos multi-valor) ---
+lar <- rbindlist(largo)
+lar <- merge(lar, dist[, .(mod_id, producto_id)], by = "mod_id", sort = FALSE)[, !"mod_id"]
+setcolorder(lar, c("producto_id", "id_locus", "id_pos", "te", "tx", "gene", "uniprot",
+                   "sano", "aa_start", "aa_end"))
+setorder(lar, producto_id, tx, id_pos)
+fwrite(lar, TAB3, sep = "\t")
 
 # --- metrics + resumen ---
 msg <- function(...) cat(..., "\n", file = stderr())
