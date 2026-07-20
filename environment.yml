@@ -1,0 +1,41 @@
+# Entorno completo para correr el pipeline TE -> homología modular.
+#
+#   mamba env create -f environment.yml     # (o conda / micromamba)
+#   conda activate te-modular-homology
+#   bash run.sh test/config.test.sh         # verifica la instalación en segundos
+#
+# El orden de los canales importa: conda-forge primero evita mezclar builds de R.
+# El pipeline NO necesita el binario liftOver de UCSC (usa rtracklayer::liftOver)
+# ni ninguna librería de Python fuera de la estándar.
+name: te-modular-homology
+
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  # --- base ---
+  - r-base=4.5                  # el pipeline se desarrolló y validó con 4.5.1
+  - python=3.12                 # scripts 03 y helpers: solo librería estándar
+
+  # --- R: manejo de rangos/genomas (pasos 01, 02) ---
+  - bioconductor-genomicranges
+  - bioconductor-genomicfeatures
+  - bioconductor-genomeinfodb
+  - bioconductor-rtracklayer    # importa el GTF y hace el liftOver
+  - bioconductor-rsamtools      # indexa el genoma (.fai) y extrae secuencias
+  - bioconductor-biostrings     # traducción y escritura de FASTA (pasos 02, 05)
+
+  # --- R: manipulación de tablas (todos los pasos) ---
+  - r-data.table
+  - r-tidyverse
+  - r-janitor
+
+  # --- opcionales, pero el pipeline los pide si usás esos pasos ---
+  - cd-hit                      # paso 06, solo con la flag --cdhit
+  - bioconductor-biomart        # helpers/map_uniprot.qmd (mapeo transcripto->UniProt)
+
+  # Nota: map_uniprot.qmd es un notebook Quarto. Para renderizarlo hace falta
+  # Quarto, que NO se instala acá porque conviene el instalador oficial
+  # (https://quarto.org/docs/get-started/) o el IDE (RStudio/Positron ya lo trae).
+  # Alternativa sin Quarto: abrir el .qmd y correr los chunks a mano.

@@ -12,13 +12,35 @@ de punta a punta con un solo comando, y escala a otros genomas copiando el confi
 
 ## Instalación / dependencias
 
+La forma recomendada: crear el entorno conda con todo incluido y verificarlo con el test
+sintético (corre en segundos, sin datos grandes ni red).
+
+```bash
+mamba env create -f environment.yml      # o conda / micromamba
+conda activate te-modular-homology
+bash run.sh test/config.test.sh          # debe terminar en "LISTO"
+```
+
+El test arma un cromosoma de 2 kb con 1 gen y 1 TE, y debe dar **1 hit → 1 locus → 1 dominio de
+51 alaninas**. Si eso sale, la instalación está bien.
+
+Qué instala (por si preferís armarlo a mano):
+
 - **R** con: `rtracklayer`, `GenomicRanges`, `GenomicFeatures`, `Biostrings`, `Rsamtools`,
-  `data.table`, `tidyverse`, `janitor`.
+  `GenomeInfoDb`, `data.table`, `tidyverse`, `janitor`.
 - **Python 3** (solo stdlib) para la validación Dfam (paso 03, opcional; requiere red).
 - *(opcional)* `cd-hit` para el paso 06; `biomaRt` (R) para el helper de UniProt.
 
-No usa `TxDb`/`bedtools`/`yq`: el CDS-por-transcripto se arma directo del GTF; el config son
-env-vars de shell (mapea 1:1 a un `config.yaml` de Snakemake si se estandariza después).
+Si ya tenés un R con los paquetes y no querés el env, apuntá `RSCRIPT` en el config al `Rscript`
+de ese R.
+
+No usa `TxDb`/`bedtools`/`yq` ni el binario `liftOver` de UCSC (el liftOver es el de
+`rtracklayer`): el CDS-por-transcripto se arma directo del GTF; el config son env-vars de shell
+(mapea 1:1 a un `config.yaml` de Snakemake si se estandariza después).
+
+> **Quarto** no está en el `environment.yml`: sólo hace falta para renderizar
+> `helpers/map_uniprot.qmd`, y conviene instalarlo con el instalador oficial o usar el que ya
+> trae RStudio/Positron. Sin Quarto, se pueden correr los chunks del `.qmd` a mano.
 
 ## Uso rápido
 
