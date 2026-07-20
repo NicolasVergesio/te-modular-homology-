@@ -4,6 +4,10 @@
 # Todas las variables se exportan y las leen los scripts R/Python (Sys.getenv /
 # os.environ). No hay parser de YAML: a propósito, sin dependencias extra.
 # Ver config.panTro6.sh para un ejemplo completo (chimpancé).
+#
+# LO QUE NO USES: dejalo con la ruta VACIA (=""). NO comentes la linea: run.sh
+# corre con 'set -u' y algunas variables (LIFTOVER_TARGET, OUTDIR, GENOME,
+# RSCRIPT) las usa directo -> comentarlas aborta con 'unbound variable'.
 # =============================================================================
 
 # --- carpeta con los DATOS de esta especie y donde irán los RESULTADOS ---

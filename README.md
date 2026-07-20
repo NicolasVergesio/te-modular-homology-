@@ -42,6 +42,26 @@ No usa `TxDb`/`bedtools`/`yq` ni el binario `liftOver` de UCSC (el liftOver es e
 > `helpers/map_uniprot.qmd`, y conviene instalarlo con el instalador oficial o usar el que ya
 > trae RStudio/Positron. Sin Quarto, se pueden correr los chunks del `.qmd` a mano.
 
+## Qué hay que descargar
+
+Sólo **tres archivos son imprescindibles**. El resto se agrega según el caso; el pipeline corre
+igual sin ellos, perdiendo la funcionalidad que se indica.
+
+| # | Archivo | ¿Obligatorio? | Variable | Para qué / qué se pierde sin él | Dónde se consigue |
+|---|---|---|---|---|---|
+| 1 | **GTF** de la especie | **SÍ** | `GTF` | La anotación de CDS: sin esto no hay nada que intersecar. | Ensembl FTP (`Especie.Ensamblado.RELEASE.gtf.gz`) |
+| 2 | **Hits Dfam** formato `nrph` | **SÍ** | `TE_HITS` | Las posiciones de los TE en el genoma. | Dfam releases (`*.nrph.hits.gz`) |
+| 3 | **Genoma FASTA** | **SÍ** | `GENOME_FASTA` | Extraer las secuencias. El `.fai` **no** se descarga: el paso 02 lo genera solo. | UCSC o Ensembl |
+| 4 | `dfam_curated_taxa.tsv` | Recomendado | `DFAM_TAXA` | `repClass`/`repFamily`/clado por accession. **Sin él el pipeline no falla**: esas columnas quedan en `NA` y el paso 04 infiere la familia de la raíz del nombre del TE (`AluSx1` → `AluSx1`), que es peor pero funciona. | Se genera una vez con `helpers/parse_dfam_embl.sh` desde `Dfam_curatedonly.embl.gz`. **Es global de Dfam**: el mismo archivo sirve para todas las especies. |
+| 5 | `.over.chain` | **Sólo si** los hits y el GTF están en **ensamblados distintos** | `LIFTOVER_CHAIN` + `LIFTOVER_TARGET` | Llevar unos u otros al ensamblado común. Si ambos ya están en el mismo, no se descarga nada. | UCSC (`liftOver/` del genoma) |
+| 6 | `chromAlias.txt` | **Sólo si** los hits usan **accesiones GenBank** (`CM000377.3`) | `CHROM_ALIAS` | Traducir esos nombres a `chr1`. Si los hits ya vienen como `chr1` o `1`, no hace falta: el paso 01 normaliza solo. | UCSC (`<genoma>.chromAlias.txt`) |
+| 7 | Mapeo transcripto→UniProt | Opcional | `ENST2UNIPROT` | Llena la columna `uniprot`. Sin él queda `NA` en toda la corrida (no rompe nada aguas abajo). | Ensembl FTP (`tsv/…uniprot.tsv.gz`) o `helpers/map_uniprot.qmd` (biomaRt) |
+| 8 | FASTA de UniProt **con isoformas** | Opcional | *(ninguna)* | Sólo para `helpers/validar_vs_uniprot.py`, que se corre aparte. No participa del pipeline. | UniProt (proteoma, "all isoforms") |
+
+> **Cuidado con el par 5–6:** son problemas distintos y se confunden. El `.chain` es para
+> **coordenadas** de ensamblados distintos (panTro5 vs panTro6); el `chromAlias` es para
+> **nombres** de cromosomas del mismo ensamblado. Podés necesitar uno, otro, los dos o ninguno.
+
 ## Uso rápido
 
 ```bash
@@ -64,6 +84,38 @@ bash run.sh config/config.miEspecie.sh --dfam --cdhit      # + validación Dfam 
 
 > **Dos mundos:** el **genómico** (paso 04) cuenta *inserciones* (loci); el **proteico**
 > (paso 05) arma *módulos* para homología (dominios). Detalle visual en `docs/`.
+
+## Config: qué hacer con lo que no usás
+
+**Regla: dejá la variable con la ruta vacía (`=""`). Nunca comentes la línea.**
+
+```bash
+export LIFTOVER_CHAIN=""        # ✅ correcto: no tengo chain
+#export LIFTOVER_CHAIN="..."    # ❌ evitar (ver abajo)
+```
+
+Vacío y comentado *parecen* lo mismo, pero no lo son. Las variables que leen R y Python dan igual
+en los dos casos (`Sys.getenv()` devuelve `""` tanto si está vacía como si no existe). Pero
+`run.sh` corre con `set -u` y usa algunas directamente, así que **comentarlas aborta la corrida**:
+
+```
+$ bash run.sh config/config.miEspecie.sh        # con LIFTOVER_TARGET comentada
+run.sh: line 33: LIFTOVER_TARGET: unbound variable
+```
+
+Con `LIFTOVER_TARGET=""` la misma corrida termina bien. Como la distinción depende de qué variable
+es —y no es evidente cuál lee quién—, la regla simple de usar siempre `""` es la que conviene:
+funciona para todas. El `config.template.sh` ya viene así.
+
+Casos concretos de "no lo tengo":
+
+| Situación | Qué poner |
+|---|---|
+| Mismo ensamblado, sin liftOver | `LIFTOVER_CHAIN=""` y `LIFTOVER_TARGET="none"` |
+| Los hits ya usan `chr1` o `1` | `CHROM_ALIAS=""` |
+| Sin mapeo a UniProt | `ENST2UNIPROT=""` (la columna `uniprot` queda `NA`) |
+| Sin taxonomía de Dfam | `DFAM_TAXA=""` (familia inferida del nombre del TE) |
+| Todos los cromosomas del GTF | `CHROMS=""` |
 
 ## Config (variables principales)
 
