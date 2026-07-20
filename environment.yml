@@ -28,6 +28,7 @@ dependencies:
 
   # --- R: manipulación de tablas (todos los pasos) ---
   - r-data.table
+  - r-r.utils                   # data.table::fread lo NECESITA para leer .gz (hits, GTF)
   - r-tidyverse
   - r-janitor
 

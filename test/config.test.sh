@@ -7,8 +7,8 @@
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"     # carpeta test/
 DATA="${HERE}/data"
 
-export GTF="${DATA}/test.gtf"
-export TE_HITS="${DATA}/test.nrph.hits"
+export GTF="${DATA}/test.gtf.gz"
+export TE_HITS="${DATA}/test.nrph.hits.gz"
 export GENOME_FASTA="${DATA}/test.fa"
 export DFAM_TAXA="${DATA}/test_dfam_taxa.tsv"
 export CHROM_ALIAS=""                       # los hits usan '1' -> se normaliza a chr1 solo
