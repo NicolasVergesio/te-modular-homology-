@@ -52,7 +52,9 @@ norm_multi <- function(x) gsub(";", ",", x, fixed = TRUE)
 # valores de 'vals' agrupados por transcripto, alineados a utx
 por_tx <- function(vals, txs, utx) {
   vapply(utx, function(u) {
-    v <- unlist(strsplit(vals[txs == u], "[;,]"))
+    # as.character: si la columna viene entera en NA (p.ej. sin ENST2UNIPROT) llega
+    # como logical y strsplit aborta con "non-character argument".
+    v <- unlist(strsplit(as.character(vals[txs == u]), "[;,]"))
     v <- unique(v[!is.na(v) & nzchar(v) & v != "NA"])
     if (!length(v)) "NA" else paste(v, collapse = ",")
   }, character(1), USE.NAMES = FALSE)
