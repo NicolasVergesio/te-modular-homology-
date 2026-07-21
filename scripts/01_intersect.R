@@ -152,18 +152,44 @@ if (nzchar(ENST2UNI) && file.exists(ENST2UNI)) {
 # 5) Coordenadas relativas al CDS y aminoacidicas (pmapToTranscripts, frame-aware)
 # ---------------------------------------------------------------------------
 # Un liftOver correcto conserva, por transcripto, el MISMO nº de exones CDS, en un
-# solo cromosoma y una sola hebra. Se excluye (y ANOTA) todo lo demas:
+# solo cromosoma, una sola hebra Y EN EL MISMO ORDEN. Se excluye (y ANOTA) todo lo demas:
 #   roto_chrom_hebra (varios chr/hebra) | multimapeo (out>in, exon duplicado) |
-#   perdida_parcial (out<in, exon perdido). Solo 'ok' entra a la proyeccion a aa.
+#   perdida_parcial (out<in, exon perdido) | orden_roto (ver abajo).
+# Solo 'ok' entra a la proyeccion a aa.
 ncds_in <- table(cds$transcript_id)               # nº exones CDS ANTES del liftOver
 cds_by_tx_all <- split(gr_cds, gr_cds$transcript_id)
+
+# 'orden_roto': el liftOver puede correr un exon y romper la correspondencia entre el
+# orden por exon_number y el orden genomico 5'->3'. Ahi los pasos 01 y 02 arman CDS
+# distintos y las coordenadas aa quedan corridas SIN QUE NINGUN QC lo note:
+#   - el paso 02 (extractTranscriptSeqs) respeta el orden de la GRangesList = exon_number;
+#   - pmapToTranscripts (mas abajo) IGNORA ese orden y ordena por coordenada genomica.
+# Verificado: pmapToTranscripts da el mismo resultado con los exones en cualquier orden,
+# asi que NO alcanza con ordenarlos antes de llamarla; hay que excluir el transcripto.
+# Caso real en panTro6: ENSPTRT00000106637 quedo con el exon CDS 1 (18 bp) a 5,3 Mb de
+# los otros 30, y su hit de SVA_A salia 18 nt (6 aa) corrido, pasando igual el QC del
+# paso 02 (que valida PERTENENCIA al CDS con grepl, no POSICION).
+# Es un artefacto, no biologia: el GTF de chimp antes del liftOver tiene 0 de estos
+# (y hg38/pongo, que corren sin liftOver, tambien 0); despues del liftOver, 771.
+orden_roto_tx <- data.frame(tx = as.character(gr_cds$transcript_id),
+                            st = start(gr_cds), en = end(gr_cds),
+                            hebra = as.character(strand(gr_cds)),
+                            nro = suppressWarnings(as.integer(gr_cds$exon_number)),
+                            stringsAsFactors = FALSE) %>%
+  dplyr::filter(!is.na(nro)) %>%                  # sin exon_number no se puede juzgar
+  dplyr::arrange(tx, nro) %>%
+  dplyr::group_by(tx) %>%
+  dplyr::summarise(roto = is.unsorted(dplyr::if_else(hebra == "-", -en, st)),
+                   .groups = "drop") %>%
+  dplyr::filter(roto) %>% dplyr::pull(tx)
 n_strand <- lengths(unique(strand(cds_by_tx_all)))
 n_chrom  <- lengths(unique(seqnames(cds_by_tx_all)))
 n_out    <- lengths(cds_by_tx_all)
 n_in     <- as.integer(ncds_in[names(cds_by_tx_all)])
 motivo <- ifelse(n_chrom > 1 | n_strand > 1, "roto_chrom_hebra",
           ifelse(n_out > n_in, "multimapeo",
-          ifelse(n_out < n_in, "perdida_parcial", "ok")))
+          ifelse(n_out < n_in, "perdida_parcial",
+          ifelse(names(cds_by_tx_all) %in% orden_roto_tx, "orden_roto", "ok"))))
 tx_ok  <- names(cds_by_tx_all)[motivo == "ok"]
 excl <- data.frame(transcript_id = names(cds_by_tx_all), n_cds_in = n_in,
                    n_cds_out = as.integer(n_out), n_chrom = as.integer(n_chrom),
@@ -171,15 +197,18 @@ excl <- data.frame(transcript_id = names(cds_by_tx_all), n_cds_in = n_in,
                    stringsAsFactors = FALSE)
 excl <- excl[excl$motivo != "ok", ]
 write_tsv(excl, file.path(D01, "transcriptos_excluidos_liftover.tsv"))
-tab <- table(factor(motivo, levels = c("ok","roto_chrom_hebra","multimapeo","perdida_parcial")))
+tab <- table(factor(motivo, levels = c("ok","roto_chrom_hebra","multimapeo",
+                                       "perdida_parcial","orden_roto")))
 message("01: liftOver por tx -> ok:", tab["ok"], " roto:", tab["roto_chrom_hebra"],
         " multimapeo:", tab["multimapeo"], " perdida_parcial:", tab["perdida_parcial"],
+        " orden_roto:", tab["orden_roto"],
         " (excluidos anotados en transcriptos_excluidos_liftover.tsv)")
 metric("01", "tx_lifteados", length(cds_by_tx_all))
 metric("01", "tx_ok", tab["ok"])
 metric("01", "tx_excl_roto_chrom_hebra", tab["roto_chrom_hebra"])
 metric("01", "tx_excl_multimapeo", tab["multimapeo"])
 metric("01", "tx_excl_perdida_parcial", tab["perdida_parcial"])
+metric("01", "tx_excl_orden_roto", tab["orden_roto"])
 cds_by_tx <- cds_by_tx_all[tx_ok]
 
 ok <- df$transcript_id %in% tx_ok

@@ -173,7 +173,7 @@ Son muchos; **los que se usan habitualmente están marcados con ★**. El resto 
 |---|---|---|
 | `all_cds_coord.tsv` | un exón CDS del GTF | Todos los CDS `protein_coding` con sus coordenadas (ya lifteadas si correspondía). Es el universo contra el que se cruzan los TE; pesado y sólo para auditar. |
 | `hits_totales_en_cds.tsv` | un solape TE∩CDS | Todos los solapes **antes** de aplicar `E_VALUE_THRESHOLD` y `OVERLAP_BP_THR`. Comparado con `hits_filtrados_en_cds.tsv` muestra exactamente qué descartó el filtro. |
-| `transcriptos_excluidos_liftover.tsv` | un transcripto excluido | Sólo con `LIFTOVER_TARGET="gtf"`: transcriptos que el liftOver rompió, con el motivo (`roto_chrom_hebra`, `multimapeo`, `perdida_parcial`). Vacío = liftOver limpio. |
+| `transcriptos_excluidos_liftover.tsv` | un transcripto excluido | Sólo con `LIFTOVER_TARGET="gtf"`: transcriptos que el liftOver rompió, con el motivo (`roto_chrom_hebra`, `multimapeo`, `perdida_parcial`, `orden_roto`). Vacío = liftOver limpio. |
 
 **`02_extraccion/`** — secuencias y QC
 

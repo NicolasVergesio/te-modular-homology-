@@ -29,9 +29,10 @@ pipeline/run.sh pipeline/config/config.panTro6.sh --cdhit    # + CD-Hit (opciona
 07 dominios  : STEP1 3597 hits AA crudos (04a) → STEP2 3101 dominios distintos (04b, dedup por contención)
 ```
 
-> **Decisión (2026-07-14):** el paso 01 excluye los transcriptos cuyo CDS no lifteó de forma
-> consistente (nº de exones out≠in, o cae en varios chr/hebra) — motivos `multimapeo` /
-> `perdida_parcial` / `roto_chrom_hebra`, anotados en `transcriptos_excluidos_liftover.tsv`.
+> **Decisión (2026-07-14, ampliada el 2026-07-21):** el paso 01 excluye los transcriptos cuyo CDS
+> no lifteó de forma consistente (nº de exones out≠in, cae en varios chr/hebra, o los exones
+> quedaron desordenados) — motivos `multimapeo` / `perdida_parcial` / `roto_chrom_hebra` /
+> `orden_roto`, anotados en `transcriptos_excluidos_liftover.tsv`.
 > Esto bajó los productos con STOP interno de 50 a 9 (esos tx rompían el marco de lectura).
 > Antes eran 3915→3156→3284; ahora 3697→3016→3101. Métricas de cada paso en `metrics.tsv`.
 > El filtro por clado NO se aplica (todos sobreviven); la composición se reporta en `metrics.tsv`.
@@ -62,7 +63,7 @@ El detalle de qué decide el pipeline en cada mundo. (Visual paso a paso en
 **Compartido — pasos 01-02 (calidad y coordenadas):**
 - Solo CDS de genes/transcriptos `protein_coding` (fuera UTR, lncRNA, pseudogenes, IG/TR).
 - Unificar cromosomas al estilo UCSC + **liftOver flexible** (`gtf|hits|none`); **excluir y anotar** los
-  transcriptos con liftOver imperfecto (nº exones out≠in: `multimapeo`/`perdida_parcial`/`roto`).
+  transcriptos con liftOver imperfecto (`multimapeo`/`perdida_parcial`/`roto`/`orden_roto`).
 - Proyección genómico→aminoácido con `pmapToTranscripts` (frame-aware); chequeo de subcadena = 100%.
 - Filtros del hit: `e-value ≤ 1e-10` + `coverage ≥ 30 nt`.
 - Bandera de calidad `sano` (múltiplo de 3 + ATG + stop en marco) — NO filtra, marca. **Sin filtro por clado.**

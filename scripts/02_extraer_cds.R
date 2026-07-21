@@ -29,8 +29,13 @@ if (!file.exists(paste0(GENOME, ".fai"))) { message("02: indexando genoma (.fai)
 fa <- FaFile(GENOME); gchr <- seqnames(seqinfo(fa))
 
 # --- CDS por transcripto (solo tx con hits) ---
+# extractTranscriptSeqs concatena los exones EN EL ORDEN de la GRangesList, asi que ese
+# orden define el CDS. Se ordena explicitamente por exon_number para no depender de que
+# el GTF traiga las filas ordenadas, y para que coincida con el criterio del paso 01
+# (que excluye como 'orden_roto' los tx donde exon_number y coordenada no concuerdan).
 df_cds_filt <- df_cds %>% semi_join(df_hits, by = "transcript_id") %>%
-  filter(seqnames %in% gchr)
+  filter(seqnames %in% gchr) %>%
+  arrange(transcript_id, as.integer(exon_number))
 cds_gr  <- GRanges(df_cds_filt$seqnames,
                    IRanges(df_cds_filt$start, df_cds_filt$end),
                    strand = df_cds_filt$strand)

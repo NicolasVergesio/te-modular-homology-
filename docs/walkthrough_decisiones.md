@@ -51,6 +51,25 @@ CDS lifteado. Ej real: un `AluY` = los primeros 18 aa de una proteína. Dos filt
    `roto_chrom_hebra` (249). Antes solo se sacaban los 249 rotos. **Efecto:** bajó los productos
    con STOP interno de 50 → 9 (esos tx rompían el marco). Baseline 3915→3156→3284 pasó a
    3697→3016→3132.
+1-bis. **Cuarto motivo de exclusión: `orden_roto` (2026-07-21).** Los tres motivos de arriba miran
+   *cuántos* exones sobrevivieron y *dónde*, pero no **en qué orden**. El liftOver puede correr un
+   exón y romper la correspondencia entre `exon_number` y el orden genómico 5'→3'; ahí los pasos 01
+   y 02 arman CDS distintos y las coordenadas aminoacídicas quedan corridas sin que ningún QC lo
+   note. Es que el paso 02 (`extractTranscriptSeqs`) respeta el orden de la GRangesList
+   (= `exon_number`), mientras que `pmapToTranscripts` lo **ignora** y ordena por coordenada
+   genómica — verificado pasándole los mismos exones en dos órdenes distintos: devuelve lo mismo.
+   Por eso no alcanza con ordenarlos antes de llamarla; hay que excluir el transcripto.
+
+   Que es artefacto y no biología se comprueba mirando el GTF de chimp **antes** del liftOver:
+   0 transcriptos desordenados de 49.949; después, 771 de 46.749. Las anotaciones que corren sin
+   liftOver también dan 0 (hg38 v116: 0/278.455; v115: 0/211.446; pongo: 0/37.189).
+
+   De esos 771, 741 ya caían en los otros tres motivos: `orden_roto` agrega **30**. Sólo 2 tenían
+   hit filtrado, y de esos 2 uno tenía la coordenada mal (`ENSPTRT00000106637`, exón CDS 1 de 18 bp
+   a 5,3 Mb de los otros 30 → su hit de SVA_A salía 18 nt = 6 aa corrido, y pasaba igual el QC de
+   pertenencia del paso 02, que usa `grepl`). **Efecto en panTro6:** 3697→3695 hits, 3101→3099
+   dominios; el resto de la cascada se mueve exactamente −2. hg38 y pongo no se mueven.
+
 2. **`metrics.tsv`** por corrida (long: paso/metrica/valor) — cascada completa + composición por
    clado. Los 4 scripts appendan; el paso 01 lo reinicia.
 3. **Taxonomía Dfam**: si falta el archivo, ahora crea las columnas en `NA` (antes no las creaba
@@ -319,7 +338,7 @@ el total de hits. Los transcriptos cuyo producto difiere quedan sin accession y 
 
 1. **El liftOver de HITS no tiene validación.** La rama `LIFTOVER_TARGET="gtf"` reporta 6 métricas,
    un mensaje y una tabla de transcriptos excluidos (`roto_chrom_hebra` / `multimapeo` /
-   `perdida_parcial`). La rama `"hits"` es una sola línea sin nada: `unlist(liftOver(...))`, que
+   `perdida_parcial` / `orden_roto`). La rama `"hits"` es una sola línea sin nada: `unlist(liftOver(...))`, que
    esconde tres fallos silenciosos — hits no mapeados (desaparecen sin contarse), multimapeo (1 hit
    → N rangos, infla conteos) y fragmentación (un hit que cruza un hueco de la chain se parte, y
    cada fragmento tiene menos bp de solape, pudiendo caer bajo `OVERLAP_BP_THR`). Para arreglarlo
