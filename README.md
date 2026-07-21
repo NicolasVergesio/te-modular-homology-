@@ -147,13 +147,89 @@ Cada especie escribe en su propia `resultados_<GENOME>/` — **nunca se mezclan*
 ## Estructura de salidas (`<OUTDIR>/`)
 
 ```
-hits_filtrados_en_cds.tsv   ← tabla central de hits (paso 02 le agrega la col sano)
+hits_filtrados_en_cds.tsv    ← tabla central de hits
 metrics.tsv                  ← métricas de toda la corrida (paso/metrica/valor)
-01_intersect/               ← all_cds_coord, hits_totales, transcriptos_excluidos_liftover
-02_extraccion/              ← cds_qc, cds_completos(+sanos), regiones_te(+sanos)
-03_validacion_dfam/         ← validacion_dfam_todos.tsv, dfam_cache/   (solo con --dfam)
-clusters_<GENOME>/          ← 01_hits_magna, 02_posiciones, 03_loci, 04a_hits_aa, 04b_dominios_aa
+01_intersect/                ← all_cds_coord, hits_totales_en_cds, transcriptos_excluidos_liftover
+02_extraccion/               ← cds_qc, cds_completos(+sanos), regiones_te(+sanos)
+03_validacion_dfam/          ← validacion_dfam_todos.tsv, dfam_cache/   (solo con --dfam)
+clusters_<GENOME>/           ← 01_hits_magna … 04b, validación, REPORTE
 ```
+
+### Qué es cada archivo
+
+Son muchos; **los que se usan habitualmente están marcados con ★**. El resto es trazabilidad
+(poder auditar de dónde salió cada número) o insumo intermedio.
+
+**Raíz de `<OUTDIR>/`**
+
+| archivo | una fila = | qué es |
+|---|---|---|
+| ★ `hits_filtrados_en_cds.tsv` | un hit × exón × isoforma | **La tabla central.** Cada TE que cae en un CDS, con sus coordenadas genómicas, las relativas al CDS, las aminoacídicas (`start_aa`/`end_aa`), la anotación Dfam (`repClass`/`repFamily`/`class_family`), UniProt y el flag `sano` que agrega el paso 02. Todo lo demás deriva de acá. |
+| `metrics.tsv` | una métrica | `paso · metrica · valor` de toda la corrida. Sirve para comparar corridas entre sí y detectar regresiones de un vistazo. |
+
+**`01_intersect/`** — el cruce crudo, antes de filtrar
+
+| archivo | una fila = | qué es |
+|---|---|---|
+| `all_cds_coord.tsv` | un exón CDS del GTF | Todos los CDS `protein_coding` con sus coordenadas (ya lifteadas si correspondía). Es el universo contra el que se cruzan los TE; pesado y sólo para auditar. |
+| `hits_totales_en_cds.tsv` | un solape TE∩CDS | Todos los solapes **antes** de aplicar `E_VALUE_THRESHOLD` y `OVERLAP_BP_THR`. Comparado con `hits_filtrados_en_cds.tsv` muestra exactamente qué descartó el filtro. |
+| `transcriptos_excluidos_liftover.tsv` | un transcripto excluido | Sólo con `LIFTOVER_TARGET="gtf"`: transcriptos que el liftOver rompió, con el motivo (`roto_chrom_hebra`, `multimapeo`, `perdida_parcial`). Vacío = liftOver limpio. |
+
+**`02_extraccion/`** — secuencias y QC
+
+| archivo | una entrada = | qué es |
+|---|---|---|
+| ★ `cds_qc.tsv` | un transcripto | El QC que define `sano`: `width`, `multiplo_3`, `empieza_atg`, `stop_codon`, `stop_ok`. Acá se ve **por qué** un transcripto quedó marcado como no sano. |
+| `cds_completos.fasta` | un transcripto | CDS nucleotídico completo reconstruido uniendo exones. Es el insumo del paso 05 (se traduce acá). |
+| `cds_completos_sanos.fasta` | un transcripto | Igual, restringido a los `sano=TRUE`. |
+| `regiones_te.fasta` | un hit | Sólo el tramo nucleotídico del TE dentro del CDS (no la proteína). Útil para análisis a nivel ADN. |
+| `regiones_te_sanos.fasta` | un hit | Igual, restringido a transcriptos sanos. |
+
+**`clusters_<GENOME>/`** — reducción de redundancia (paso 04) y dominios proteicos (paso 05)
+
+| archivo | una fila = | qué es |
+|---|---|---|
+| `01_hits_magna.tsv` | un hit × exón × isoforma | La tabla central **más** las columnas de redundancia: `id_pos` (posición genómica), `id_locus` (inserción), `rol` (representante o no), `flag`. No borra nada: anota. |
+| `02_posiciones.tsv` | una **posición genómica** de TE | Colapsa las isoformas: varias filas magna del mismo TE en el mismo lugar → una posición. |
+| `03_loci.tsv` | una **inserción** (locus) | Colapsa posiciones que son el mismo evento de inserción (SVA que contiene un Alu, L1 fragmentado, etc.). **Es la unidad "genómica": contar inserciones se hace acá.** |
+| `REPORTE_clusters.txt` | — | Texto legible con la cascada `filas magna → posiciones → loci` y los casos que quedaron marcados para revisar. Es la explicación de los tres archivos anteriores. |
+| `04a_hits_aa.fasta` | un hit (posición × isoforma) | Secuencia AA de **todos** los hits, crudo y redundante. Respaldo y entrada del validador. |
+| ★ `04b_dominios_aa.fasta` | un dominio | **La salida principal: el input de CD-Hit.** Dentro de cada locus se deduplica por contención de secuencia. |
+| ★ `04b_dominios_aa.tsv` | un dominio | La misma información en tabla, con los campos multi-valor alineados por transcripto (ver *Campos multi-valor*, abajo). |
+| ★ `04b_productos_tx.tsv` | un hit (**combinación inserción × transcripto**) | Versión **larga** de la anterior: sin campos multi-valor, una fila por combinación. Es la cómoda para analizar en R y la única donde TE y transcripto pueden variar a la vez sin ambigüedad. |
+| `05_validacion_uniprot.tsv` | un hit | Sólo si se corrió `helpers/validar_vs_uniprot.py`: el `status` de cada hit contra UniProt, con qué accession validó y cuáles había. |
+| `05_validacion_uniprot.txt` | — | El reporte de porcentajes de lo anterior, con un glosario de cada categoría al final. |
+
+**`cdhit/`** (sólo con `--cdhit`): `dominios_c0.6/0.7/0.8.fasta` y sus `.clstr` — los grupos de
+homología a tres umbrales de identidad.
+
+### Las dos unidades que no hay que confundir
+
+- **Inserción / locus** (`03_loci.tsv`) → mundo **genómico**: "cuántos TE aportaron secuencia
+  codificante".
+- **Dominio** (`04b_dominios_aa`) → mundo **proteico**: "cuántos módulos proteicos distintos hay".
+
+Un locus puede dar más de un dominio (isoformas con productos distintos) y varios hits colapsan
+en un dominio. Los números **no** tienen por qué coincidir, y comparar uno contra otro sin aclarar
+cuál se está usando es la confusión más fácil de cometer.
+
+### Campos multi-valor (en `04b_dominios_aa`)
+
+Un dominio puede estar sostenido por varios transcriptos, y cada uno tener varias accessions:
+
+| separador | significa |
+|---|---|
+| `;` | separa **transcriptos**: siempre `n_tx` slots, en el orden de la columna `tx` |
+| `,` | separa varios valores **dentro** de un transcripto |
+| `NA` | ocupa el slot vacío, nunca se omite |
+
+```
+tx      = ENSPTRT00000001312;ENSPTRT00000077350
+uniprot = H2PYY3,A0A6D2VWW0;K7BA23,A0A6D2XP50
+```
+
+Aplica a `uniprot`, `gene` y `sano`. **`tes` no**: los TEs son otro eje. Si necesitás la
+correspondencia exacta sin decodificar nada, usá `04b_productos_tx.tsv`.
 
 ## Ejemplo: chimpancé (baseline de no-regresión)
 
